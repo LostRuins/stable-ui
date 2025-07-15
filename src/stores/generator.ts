@@ -153,7 +153,7 @@ export const useGeneratorStore = defineStore("generator", () => {
     const queue = ref<ICurrentGeneration[]>([]);
 
     const minDimensions = ref(64);
-    const maxDimensions = computed(() => useOptionsStore().allowLargerParams === "Enabled" ? 3072 : 1024);
+    const maxDimensions = computed(() => useOptionsStore().allowLargerParams === "Enabled" ? 3072 : 1536);
     const minImages = ref(1);
     const maxImages = ref(20);
     const minSteps = ref(1);
