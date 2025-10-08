@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { reactive } from 'vue';
-import { useGeneratorStore } from '@/stores/generator';
+import { useGeneratorStore, getNewSeed } from '@/stores/generator';
 import {
     type FormRules,
     ElCollapse,
@@ -147,7 +147,7 @@ handleUrlParams();
                         <form-input label="Seed" prop="seed" v-model="store.params.seed" placeholder="Enter seed here">
                             <template #append>
                                 <el-tooltip content="Randomize!" placement="top">
-                                    <el-button :icon="MagicStick" @click="() => store.params.seed = Math.abs((Math.random() * 2 ** 32) | 0)" />
+                                    <el-button :icon="MagicStick" @click="() => store.params.seed = getNewSeed()" />
                                 </el-tooltip>
                             </template>
                         </form-input>

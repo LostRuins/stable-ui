@@ -24,6 +24,10 @@ function getDefaultStore() {
     }
 }
 
+export function getNewSeed() {
+    return Math.abs((Math.random() * 2 ** 32) | 0);
+}
+
 export interface IModelData {
     title?: string;
     model_name?: string;
