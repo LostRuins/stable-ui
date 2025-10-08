@@ -243,17 +243,18 @@ export const useGeneratorStore = defineStore("generator", () => {
                     for (const currentSampler of (
                         samplers
                     )) {
+                        let origseed:number = parseInt((params.value.seed).toString());
+                        if (isNaN(origseed) || origseed < 0)
+                        {
+                            origseed = getNewSeed();
+                        }
                         for (let i = 0; i < params.value.n; i++) {
-                            let origseed:number = parseInt((params.value.seed).toString());
-                            if(origseed>0)
-                            {
-                                origseed += parseInt(i.toString());
-                            }
+                            let seed = origseed + parseInt(i.toString());
                             let newgen:any = {
                                 prompt: currentPrompt,
                                 params: {
                                     ...params.value,
-                                    seed: origseed,
+                                    seed: seed,
                                     sampler_name: currentSampler,
                                     cfg_scale: currentGuidance,
                                     steps: currentSteps,
