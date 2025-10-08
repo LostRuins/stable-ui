@@ -158,7 +158,7 @@ export const useGeneratorStore = defineStore("generator", () => {
     const minImages = ref(1);
     const maxImages = ref(20);
     const minSteps = ref(1);
-    const maxSteps = computed(() => useOptionsStore().allowLargerParams === "Enabled" ? 500 : 50);
+    const maxSteps = computed(() => useOptionsStore().allowLargerParams === "Enabled" ? 150 : 50);
     const minCfgScale = ref(1);
     const maxCfgScale = ref(24);
     const minDenoise = ref(0.1);
