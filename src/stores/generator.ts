@@ -18,7 +18,7 @@ function getDefaultStore() {
         height: 512, // make sure these are divisible by 64
         cfg_scale: 6,
         clip_skip: 0,
-        seed: -1,
+        seed: "",
         denoising_strength: 0.6,
         frames: 1,
     }
