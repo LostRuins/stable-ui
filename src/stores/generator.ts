@@ -25,7 +25,7 @@ function getDefaultStore() {
 }
 
 export function getNewSeed() {
-    return Math.abs((Math.random() * 2 ** 32) | 0);
+    return Math.floor(Math.random() * 2 ** 31);
 }
 
 export interface IModelData {
@@ -248,8 +248,10 @@ export const useGeneratorStore = defineStore("generator", () => {
                         {
                             origseed = getNewSeed();
                         }
+                        // mask the seed to prevent overflow on the server
+                        origseed = origseed & 0x7fffffff;
                         for (let i = 0; i < params.value.n; i++) {
-                            let seed = origseed + parseInt(i.toString());
+                            const seed = (origseed + i) & 0x7fffffff;
                             let newgen:any = {
                                 prompt: currentPrompt,
                                 params: {
