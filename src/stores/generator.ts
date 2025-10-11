@@ -13,7 +13,7 @@ function getDefaultStore() {
     return {
         steps: 20,
         n: 1,
-        sampler_name: "Euler",
+        sampler_name: "Default",
         width: 512,  // make sure these are divisible by 64
         height: 512, // make sure these are divisible by 64
         cfg_scale: 6,
