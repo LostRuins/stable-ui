@@ -59,7 +59,19 @@ const availableSamplers = computedAsync(async () => {
     return updateCurrentSampler(samplerList);
 })
 
-const availableSchedulers = ["default", "discrete", "karras", "exponential", "ays", "gits", "sgm_uniform", "simple", "smoothstep"];
+let schedulerList = [] as string[];
+
+const availableSchedulers = computedAsync(async () => {
+    if (schedulerList.length === 0) {
+        try {
+            schedulerList = (await (await fetch(`${optionsStore.baseURL.length === 0 ? "." : optionsStore.baseURL}/sdapi/v1/schedulers`)).json()).map((el: any) => el.name);
+        } catch (e) {
+            schedulerList = [];
+        }
+    }
+    if (schedulerList.length === 0) return [];
+    return updateCurrentScheduler(schedulerList);
+})
 
 const rules = reactive<FormRules>({
     prompt: [{
@@ -76,6 +88,15 @@ function updateCurrentSampler(newSamplers: string[]) {
         store.params.sampler_name = newSamplers[0] as any;
     }
     return newSamplers;
+}
+
+function updateCurrentScheduler(newSchedulers: string[]) {
+    if (!store.params) return newSchedulers;
+    if (!store.params.scheduler) return newSchedulers;
+    if (newSchedulers.indexOf(store.params.scheduler) === -1) {
+        store.params.scheduler = newSchedulers[0] as any;
+    }
+    return newSchedulers;
 }
 
 function formatEST(seconds: number) {
