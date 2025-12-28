@@ -17,6 +17,7 @@ const props = defineProps<{
     info?: string;
     labelStyle?: string;
     clearable?: boolean;
+    clearIcon?: any;
     change?: Function;
 }>();
 
@@ -43,6 +44,7 @@ function onChanged(value: string) {
             :type="type"
             :placeholder="placeholder"
             :clearable="clearable"
+            :clear-icon="clearIcon"
             @focus="$emit('focus')"
             @blur="$emit('blur')"
         ><template #append><slot name="append" /></template></el-input>

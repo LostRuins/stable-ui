@@ -17,6 +17,7 @@ import {
     Comment,
     PictureFilled,
     MagicStick,
+    CloseBold,
 } from '@element-plus/icons-vue';
 import BrushFilled from '../components/icons/BrushFilled.vue';
 import ImageSearch from '../components/icons/ImageSearch.vue';
@@ -144,7 +145,7 @@ handleUrlParams();
                             label-position="top"
                         >
                         </form-input>
-                        <form-input label="Seed" prop="seed" v-model="store.params.seed" placeholder="Enter seed here" clearable>
+                        <form-input label="Seed" prop="seed" v-model="store.params.seed" placeholder="Enter seed here" clearable :clear-icon="CloseBold">
                             <template #append>
                                 <el-tooltip content="Randomize!" placement="top">
                                     <el-button :icon="MagicStick" @click="() => store.params.seed = Math.abs((Math.random() * 2 ** 32) | 0)" />
