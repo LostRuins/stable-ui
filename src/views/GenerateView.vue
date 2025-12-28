@@ -144,7 +144,7 @@ handleUrlParams();
                             label-position="top"
                         >
                         </form-input>
-                        <form-input label="Seed" prop="seed" v-model="store.params.seed" placeholder="Enter seed here">
+                        <form-input label="Seed" prop="seed" v-model="store.params.seed" placeholder="Enter seed here" clearable>
                             <template #append>
                                 <el-tooltip content="Randomize!" placement="top">
                                     <el-button :icon="MagicStick" @click="() => store.params.seed = Math.abs((Math.random() * 2 ** 32) | 0)" />
