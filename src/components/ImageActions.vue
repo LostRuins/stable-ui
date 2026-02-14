@@ -72,6 +72,7 @@ async function copyLink(imageData: ImageData) {
         scheduler: imageData.scheduler,
         extra_avi: imageData.extra_avi,
         enable_hr: imageData.enable_hr,
+        send_as_refimg: imageData.send_as_refimg,
     }
     const path = window.location.pathname.replace("images", "");
     let link = `${urlBase}${path}?share=`;

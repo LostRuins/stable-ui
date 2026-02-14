@@ -22,6 +22,7 @@ function getDefaultStore() {
         denoising_strength: 0.6,
         frames: 1,
         enable_hr: false,
+        send_as_refimg: false,
         scheduler: "default",
     }
 }
@@ -403,6 +404,7 @@ export const useGeneratorStore = defineStore("generator", () => {
                     scheduler: image.params.scheduler,
                     extra_avi: extra_avi,
                     enable_hr: image.params.enable_hr,
+                    send_as_refimg: image.params.send_as_refimg,
                 }
             })
         )

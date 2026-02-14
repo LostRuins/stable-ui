@@ -202,6 +202,9 @@ handleUrlParams();
                             <el-col :span="isMobile ? 24 : 12">
                                 <form-switch label="ESRGAN Upscale"    prop="enable_hr"   v-model="store.params.enable_hr"    info="Enable upscale with ESRGAN." />
                             </el-col>
+                            <el-col :span="isMobile ? 24 : 12">
+                                <form-switch label="Send as RefImg"    prop="send_as_refimg"   v-model="store.params.send_as_refimg"  v-if="store.sourceGeneratorTypes.includes(store.generatorType)"  info="Instead of regular Img2Img, send the image as a reference image for edit models." />
+                            </el-col>
                         </el-row>
                         </div>
                         <h3 style="margin: 16px 0 4px 0">Multi Select</h3>

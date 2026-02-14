@@ -28,6 +28,7 @@ export interface ImageData {
     scheduler?: string;
     extra_avi?: string;
     enable_hr?: 1 | 0;
+    send_as_refimg?: 1 | 0;
 }
 
 export const useOutputStore = defineStore("outputs", () => {
