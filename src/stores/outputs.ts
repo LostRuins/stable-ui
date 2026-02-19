@@ -105,10 +105,16 @@ export const useOutputStore = defineStore("outputs", () => {
             const { id, ...rest } = el;
             return rest;
         })
-        const cleanOutputs = JSON.parse(JSON.stringify(newOutputsWithoutID));
-        console.log("Inserting outputs into database", cleanOutputs)
-        const resultingIDs = await db.outputs.bulkAdd(cleanOutputs, undefined, { allKeys: true }) as IndexableType[];
-        return db.outputs.bulkGet(resultingIDs);
+        const chunkSize = 50;
+        const allIds: IndexableType[] = [];
+        for (let i = 0; i < newOutputsWithoutID.length; i += chunkSize) {
+            const chunk = newOutputsWithoutID.slice(i, i + chunkSize);
+            const cleanChunk = JSON.parse(JSON.stringify(chunk));
+            console.log(`Inserting outputs into database. Chunk ${i} - ${i + chunkSize}:`, cleanChunk);
+            const chunkIds = await db.outputs.bulkAdd(cleanChunk, undefined, { allKeys: true }) as IndexableType[];
+            allIds.push(...chunkIds);
+        }
+        return db.outputs.bulkGet(allIds);
     }
 
     /**
