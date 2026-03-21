@@ -168,7 +168,7 @@ export const useGeneratorStore = defineStore("generator", () => {
     const maxSteps = computed(() => useOptionsStore().allowLargerParams === "Enabled" ? 150 : 50);
     const minCfgScale = ref(1);
     const maxCfgScale = ref(24);
-    const minDenoise = ref(0.1);
+    const minDenoise = ref(0);
     const maxDenoise = ref(1);
     const minClipSkip = ref(0);
     const maxClipSkip = ref(10);
