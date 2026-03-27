@@ -387,25 +387,40 @@ export const useGeneratorStore = defineStore("generator", () => {
                 const animated = image.animated?true:false;
                 const mime = (animated?'gif':'png');
                 const extra_avi = (image.extra_data?(`data:video/avi;base64,${image.extra_data}`):"");
-                return {
+                let params: any = {
                     // The database automatically increments IDs for us
                     id: -1,
                     image: `data:image/${mime};base64,${img}`,
                     prompt: image.prompt,
-                    clip_skip: image.params.clip_skip,
                     modelName: image.models[0],
-                    seed: image.params.seed,
-                    steps: image.params.steps,
-                    sampler_name: image.params.sampler_name,
-                    cfg_scale: image.params.cfg_scale,
-                    width: image.params.width,
-                    height: image.params.height,
                     frames: image.params.frames,
-                    scheduler: image.params.scheduler,
                     extra_avi: extra_avi,
                     enable_hr: image.params.enable_hr,
                     send_as_refimg: image.params.send_as_refimg,
                 }
+                if (image.info && typeof image.info === 'string' && image.info.trim() !== '') {
+                    try {
+                        const info = JSON.parse(image.info);
+                        const directFields = ['seed', 'steps', 'sampler_name', 'cfg_scale', 'width', 'height', 'clip_skip'];
+                        directFields.forEach(field => {
+                            if (info[field] != null) {
+                                params[field] = info[field];
+                            } else {
+                                params[field] = image.params[field];
+                            }
+                        });
+
+                        // fields which need special mapping
+                        if (info['extra_generation_params'] && info.extra_generation_params['Schedule type']) {
+                            params.scheduler = info.extra_generation_params['Schedule type'];
+                        } else {
+                            params.scheduler = image.params.scheduler;
+                        }
+                    } catch (e) {
+                        console.warn('Failed to parse info JSON:', e);
+                    }
+                }
+                return params;
             })
         )
 
