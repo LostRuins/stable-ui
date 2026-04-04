@@ -61,8 +61,8 @@ interface IPromptHistory {
 
 type IMultiSelectItem<T> = {
     name: string;
-    enabled: boolean;
-    noneMessage: string;
+    state: "Disabled" | "Enabled" | "Multiple";
+    allowedStates?: ('Disabled' | 'Enabled' | 'Multi-Select')[];
     selected: T[];
     mapToParam: (data: ImageData) => any;
 }
@@ -97,30 +97,37 @@ export const useGeneratorStore = defineStore("generator", () => {
     const multiSelect = ref<IMultiSelect>({
         sampler: {
             name: "Sampler",
-            enabled: false,
+            state: "Enabled",
+            allowedStates: ["Disabled", "Enabled", "Multiple"],
             selected: [params.value.sampler_name],
-            noneMessage: "Failed to generate: No sampler selected.",
             mapToParam: el => el.sampler_name,
+        },
+        scheduler: {
+            name: "Scheduler",
+            state: "Enabled",
+            allowedStates: ["Disabled", "Enabled"],
+            selected: [params.value.scheduler],
+            mapToParam: el => el.scheduler,
         },
         steps: {
             name: "Steps",
-            enabled: false,
+            state: "Enabled",
+            allowedStates: ["Disabled", "Enabled", "Multiple"],
             selected: [params.value.steps],
-            noneMessage: "Failed to generate: No steps selected.",
             mapToParam: el => el.steps,
         },
         guidance: {
             name: "CFG Scale",
-            enabled: false,
+            state: "Enabled",
+            allowedStates: ["Disabled", "Enabled", "Multiple"],
             selected: [params.value.cfg_scale],
-            noneMessage: "Failed to generate: No guidance selected.",
             mapToParam: el => el.cfg_scale,
         },
         clipSkip: {
             name: "Clip Skip",
-            enabled: false,
+            state: "Disabled",
+            allowedStates: ["Disabled", "Enabled", "Multiple"],
             selected: [params.value.clip_skip],
-            noneMessage: "Failed to generate: No CLIP Skip selected.",
             mapToParam: el => el.clip_skip,
         },
     });
@@ -183,7 +190,7 @@ export const useGeneratorStore = defineStore("generator", () => {
         const multiCalc = (before: number, multiParam: IMultiSelectItem<any>, defaultMultiplier = 1) => before * (multiParam.enabled ? multiParam.selected.length : defaultMultiplier);
         const imageCount = params.value.n;
         const promptMatrixCount  = imageCount * promptMatrix().length;
-        const multiSamplerCount  = multiCalc(promptMatrixCount,    multiSelect.value.sampler);
+        const multiSamplerCount  = multiCalc(promptMatrixCount,  multiSelect.value.sampler);
         const multiStepsCount    = multiCalc(multiSamplerCount,  multiSelect.value.steps);
         const multiGuidanceCount = multiCalc(multiStepsCount,    multiSelect.value.guidance);
         const multiClipSkipCount = multiCalc(multiGuidanceCount, multiSelect.value.clipSkip);
@@ -219,9 +226,6 @@ export const useGeneratorStore = defineStore("generator", () => {
         if (!validGeneratorTypes.includes(type)) return [];
 
         if (prompt.value === "") return generationFailed("Failed to generate: No prompt submitted.");
-        for (const multi of Object.values(multiSelect.value)) {
-            if (multi.enabled && multi.selected.length === 0) return generationFailed(multi.noneMessage);
-        }
 
         const canvasStore = useCanvasStore();
         const uiStore = useUIStore();
@@ -245,14 +249,21 @@ export const useGeneratorStore = defineStore("generator", () => {
             seeds.push(origseed + i);
         }
 
-        const getMultiSelect = <T>(item: IMultiSelectItem<T>, defaultValue: any): T[] => item.enabled ? item.selected : defaultValue;
+        const getMultiSelect = <T>(item: IMultiSelectItem<T>): T[] => {
+            if (item.state === "Disabled" || (item.state === "Multiple" && item.selected.length == 0)) {
+                // disabled, or empty multiselect; the cartesian product will omit this field
+                return [];
+            }
+            return item.selected;
+        };
 
         let multiParams:any = {
             seed:         seeds,
-            cfg_scale:    getMultiSelect(multiSelect.value.guidance,  [params.value.cfg_scale]),
-            steps:        getMultiSelect(multiSelect.value.steps,     [params.value.steps]),
-            clip_skip:    getMultiSelect(multiSelect.value.clipSkip,  [params.value.clip_skip]),
-            sampler_name: getMultiSelect(multiSelect.value.sampler,   [params.value.sampler_name]),
+            cfg_scale:    getMultiSelect(multiSelect.value.guidance),
+            steps:        getMultiSelect(multiSelect.value.steps),
+            clip_skip:    getMultiSelect(multiSelect.value.clipSkip),
+            sampler_name: getMultiSelect(multiSelect.value.sampler),
+            scheduler:    getMultiSelect(multiSelect.value.scheduler),
         };
 
         // exclude parameters handled by multiParams
