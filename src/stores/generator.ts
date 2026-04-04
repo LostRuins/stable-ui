@@ -241,6 +241,15 @@ export const useGeneratorStore = defineStore("generator", () => {
         const clipSkips    = getMultiSelect(multiSelect.value.clipSkip,    [params.value.clip_skip]);
         const samplers     = getMultiSelect(multiSelect.value.sampler,     [params.value.sampler_name]);
 
+        let origseed: number = parseInt((params.value.seed).toString());
+        if (isNaN(origseed) || origseed < 0) {
+            origseed = getNewSeed();
+        }
+        const seeds: number[] = [];
+        for (let i = 0; i < params.value.n; i++) {
+            seeds.push(origseed + i);
+        }
+
         const models = [ await updateAvailableModels() ];
         for (const currentGuidance of guidances) {
             for (const currentSteps of steps) {
@@ -250,13 +259,7 @@ export const useGeneratorStore = defineStore("generator", () => {
                     for (const currentSampler of (
                         samplers
                     )) {
-                        let origseed:number = parseInt((params.value.seed).toString());
-                        if (isNaN(origseed) || origseed < 0)
-                        {
-                            origseed = getNewSeed();
-                        }
-                        for (let i = 0; i < params.value.n; i++) {
-                            const seed = (origseed + parseInt(i.toString()));
+                        for (const seed of seeds) {
                             let newgen:any = {
                                 prompt: currentPrompt,
                                 params: {
