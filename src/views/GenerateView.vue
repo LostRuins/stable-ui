@@ -359,7 +359,7 @@ handleUrlParams();
     }
 
     .generated-image {
-        width: 80%;
+        width: 90%;
         height: 100%;
         padding-top: 0px;
         padding-bottom: 0px;
