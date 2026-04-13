@@ -89,7 +89,7 @@ async function bulkDownload() {
                 </el-form-item>
                 <h3>Parameter Controls</h3>
                 <div v-for="(item, key) in generatorStore.multiSelect" :key="key" >
-                    <form-radio :label="item.name" prop="pageless" v-model="item.state" :options="item.allowedStates" />
+                    <form-radio :label="item.name" prop="pageless" v-model="item.state" :options="item.allowedStates ?? []" />
                 </div>
                 <form-radio  label="Allow Larger Params" prop="pageless" v-model="store.allowLargerParams" :options="['Enabled', 'Disabled']" />
                 <form-radio  label="Video Gen: Request AVI download" prop="pageless" v-model="store.alsoRequestAvi" :options="['Enabled', 'Disabled']" />

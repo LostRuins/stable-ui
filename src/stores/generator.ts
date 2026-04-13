@@ -62,7 +62,7 @@ interface IPromptHistory {
 type IMultiSelectItem<T> = {
     name: string;
     state: "Disabled" | "Enabled" | "Multiple";
-    allowedStates?: ('Disabled' | 'Enabled' | 'Multi-Select')[];
+    allowedStates?: ('Disabled' | 'Enabled' | 'Multiple')[];
     selected: T[];
     mapToParam: (data: ImageData) => any;
 }
@@ -70,6 +70,7 @@ type IMultiSelectItem<T> = {
 interface IMultiSelect {
     sampler: IMultiSelectItem<string>;
     steps: IMultiSelectItem<number>;
+    scheduler: IMultiSelectItem<string>;
     guidance: IMultiSelectItem<number>;
     clipSkip: IMultiSelectItem<number>;
 }
@@ -187,13 +188,14 @@ export const useGeneratorStore = defineStore("generator", () => {
     const cfgList =      ref(arrayRange(minCfgScale.value, maxCfgScale.value, 0.5));
 
     const totalImageCount = computed(() => {
-        const multiCalc = (before: number, multiParam: IMultiSelectItem<any>, defaultMultiplier = 1) => before * (multiParam.enabled ? multiParam.selected.length : defaultMultiplier);
+        const multiCalc = (before: number, multiParam: IMultiSelectItem<any>, defaultMultiplier = 1) => before * (multiParam.state === "Multiple" ? multiParam.selected.length : defaultMultiplier);
         const imageCount = params.value.n;
         const promptMatrixCount  = imageCount * promptMatrix().length;
-        const multiSamplerCount  = multiCalc(promptMatrixCount,  multiSelect.value.sampler);
-        const multiStepsCount    = multiCalc(multiSamplerCount,  multiSelect.value.steps);
-        const multiGuidanceCount = multiCalc(multiStepsCount,    multiSelect.value.guidance);
-        const multiClipSkipCount = multiCalc(multiGuidanceCount, multiSelect.value.clipSkip);
+        const multiSamplerCount   = multiCalc(promptMatrixCount,   multiSelect.value.sampler);
+        const multiSchedulerCount = multiCalc(multiSamplerCount,   multiSelect.value.scheduler);
+        const multiStepsCount     = multiCalc(multiSchedulerCount, multiSelect.value.steps);
+        const multiGuidanceCount  = multiCalc(multiStepsCount,     multiSelect.value.guidance);
+        const multiClipSkipCount  = multiCalc(multiGuidanceCount,  multiSelect.value.clipSkip);
         return multiClipSkipCount;
     })
 
@@ -249,25 +251,24 @@ export const useGeneratorStore = defineStore("generator", () => {
             seeds.push(origseed + i);
         }
 
-        const getMultiSelect = <T>(item: IMultiSelectItem<T>): T[] => {
-            if (item.state === "Disabled" || (item.state === "Multiple" && item.selected.length == 0)) {
-                // disabled, or empty multiselect; the cartesian product will omit this field
-                return [];
-            }
-            return item.selected;
+        const getMultiSelect = <T>(item: IMultiSelectItem<T>, fallback: T): T[] => {
+            if (item.state === "Disabled") return [fallback];
+            if (item.state === "Enabled") return [fallback]; // single-select: always use live params
+            if (item.state === "Multiple" && item.selected.length === 0) return [fallback];
+            return item.selected; // "Multiple" with selections: use the multi-select list
         };
 
-        let multiParams:any = {
+        let multiParams: any = {
             seed:         seeds,
-            cfg_scale:    getMultiSelect(multiSelect.value.guidance),
-            steps:        getMultiSelect(multiSelect.value.steps),
-            clip_skip:    getMultiSelect(multiSelect.value.clipSkip),
-            sampler_name: getMultiSelect(multiSelect.value.sampler),
-            scheduler:    getMultiSelect(multiSelect.value.scheduler),
+            cfg_scale:    getMultiSelect(multiSelect.value.guidance,  params.value.cfg_scale),
+            steps:        getMultiSelect(multiSelect.value.steps,     params.value.steps),
+            clip_skip:    getMultiSelect(multiSelect.value.clipSkip,  params.value.clip_skip),
+            sampler_name: getMultiSelect(multiSelect.value.sampler,   params.value.sampler_name),
+            scheduler:    getMultiSelect(multiSelect.value.scheduler, params.value.scheduler),
         };
 
         // exclude parameters handled by multiParams
-        const currentParams = { ...params.value };
+        const currentParams = { ...params.value } as Record<string, any>;
         for (const key of Object.keys(multiParams)) {
             delete currentParams[key];
         }
@@ -285,7 +286,7 @@ export const useGeneratorStore = defineStore("generator", () => {
                     }
                 }
                 return newAcc;
-            }, [{}]); 
+            }, [{}]);
         }
 
         const combinations = cartesianProduct(multiParams);
@@ -504,8 +505,11 @@ export const useGeneratorStore = defineStore("generator", () => {
     function generateText2Img(data: ImageData, correctDimensions = true) {
         const defaults = getDefaultStore();
         generatorType.value = "Text2Img";
-        multiSelect.value.guidance.enabled = false;
-        multiSelect.value.sampler.enabled  = false;
+        multiSelect.value.guidance.state  = "Enabled";
+        multiSelect.value.sampler.state   = "Enabled";
+        multiSelect.value.steps.state     = "Enabled";
+        multiSelect.value.clipSkip.state  = "Disabled";
+        multiSelect.value.scheduler.state = "Enabled";
         router.push("/");
         if (correctDimensions) {
             data.width = data.width || defaults.width as number;
