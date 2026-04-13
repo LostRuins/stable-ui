@@ -61,8 +61,8 @@ interface IPromptHistory {
 
 type IMultiSelectItem<T> = {
     name: string;
-    enabled: boolean;
-    noneMessage: string;
+    state: "Disabled" | "Enabled" | "Multiple";
+    allowedStates?: ('Disabled' | 'Enabled' | 'Multi-Select')[];
     selected: T[];
     mapToParam: (data: ImageData) => any;
 }
@@ -97,30 +97,37 @@ export const useGeneratorStore = defineStore("generator", () => {
     const multiSelect = ref<IMultiSelect>({
         sampler: {
             name: "Sampler",
-            enabled: false,
+            state: "Enabled",
+            allowedStates: ["Disabled", "Enabled", "Multiple"],
             selected: [params.value.sampler_name],
-            noneMessage: "Failed to generate: No sampler selected.",
             mapToParam: el => el.sampler_name,
+        },
+        scheduler: {
+            name: "Scheduler",
+            state: "Enabled",
+            allowedStates: ["Disabled", "Enabled"],
+            selected: [params.value.scheduler],
+            mapToParam: el => el.scheduler,
         },
         steps: {
             name: "Steps",
-            enabled: false,
+            state: "Enabled",
+            allowedStates: ["Disabled", "Enabled", "Multiple"],
             selected: [params.value.steps],
-            noneMessage: "Failed to generate: No steps selected.",
             mapToParam: el => el.steps,
         },
         guidance: {
             name: "CFG Scale",
-            enabled: false,
+            state: "Enabled",
+            allowedStates: ["Disabled", "Enabled", "Multiple"],
             selected: [params.value.cfg_scale],
-            noneMessage: "Failed to generate: No guidance selected.",
             mapToParam: el => el.cfg_scale,
         },
         clipSkip: {
             name: "Clip Skip",
-            enabled: false,
+            state: "Disabled",
+            allowedStates: ["Disabled", "Enabled", "Multiple"],
             selected: [params.value.clip_skip],
-            noneMessage: "Failed to generate: No CLIP Skip selected.",
             mapToParam: el => el.clip_skip,
         },
     });
@@ -183,7 +190,7 @@ export const useGeneratorStore = defineStore("generator", () => {
         const multiCalc = (before: number, multiParam: IMultiSelectItem<any>, defaultMultiplier = 1) => before * (multiParam.enabled ? multiParam.selected.length : defaultMultiplier);
         const imageCount = params.value.n;
         const promptMatrixCount  = imageCount * promptMatrix().length;
-        const multiSamplerCount  = multiCalc(promptMatrixCount,    multiSelect.value.sampler);
+        const multiSamplerCount  = multiCalc(promptMatrixCount,  multiSelect.value.sampler);
         const multiStepsCount    = multiCalc(multiSamplerCount,  multiSelect.value.steps);
         const multiGuidanceCount = multiCalc(multiStepsCount,    multiSelect.value.guidance);
         const multiClipSkipCount = multiCalc(multiGuidanceCount, multiSelect.value.clipSkip);
@@ -219,9 +226,6 @@ export const useGeneratorStore = defineStore("generator", () => {
         if (!validGeneratorTypes.includes(type)) return [];
 
         if (prompt.value === "") return generationFailed("Failed to generate: No prompt submitted.");
-        for (const multi of Object.values(multiSelect.value)) {
-            if (multi.enabled && multi.selected.length === 0) return generationFailed(multi.noneMessage);
-        }
 
         const canvasStore = useCanvasStore();
         const uiStore = useUIStore();
@@ -234,75 +238,103 @@ export const useGeneratorStore = defineStore("generator", () => {
         // Cache parameters so the user can't mutate the output data while it's generating
         const paramsCached: any[] = [];
 
-        const getMultiSelect = <T>(item: IMultiSelectItem<T>, defaultValue: any): T[] => item.enabled ? item.selected : defaultValue;
-        const prompts      = promptMatrix();
-        const guidances    = getMultiSelect(multiSelect.value.guidance,    [params.value.cfg_scale]);
-        const steps        = getMultiSelect(multiSelect.value.steps,       [params.value.steps]);
-        const clipSkips    = getMultiSelect(multiSelect.value.clipSkip,    [params.value.clip_skip]);
-        const samplers     = getMultiSelect(multiSelect.value.sampler,     [params.value.sampler_name]);
+        const prompts = promptMatrix();
+
+        let origseed: number = parseInt((params.value.seed).toString());
+        if (isNaN(origseed) || origseed < 0) {
+            origseed = getNewSeed();
+        }
+        const seeds: number[] = [];
+        for (let i = 0; i < params.value.n; i++) {
+            seeds.push(origseed + i);
+        }
+
+        const getMultiSelect = <T>(item: IMultiSelectItem<T>): T[] => {
+            if (item.state === "Disabled" || (item.state === "Multiple" && item.selected.length == 0)) {
+                // disabled, or empty multiselect; the cartesian product will omit this field
+                return [];
+            }
+            return item.selected;
+        };
+
+        let multiParams:any = {
+            seed:         seeds,
+            cfg_scale:    getMultiSelect(multiSelect.value.guidance),
+            steps:        getMultiSelect(multiSelect.value.steps),
+            clip_skip:    getMultiSelect(multiSelect.value.clipSkip),
+            sampler_name: getMultiSelect(multiSelect.value.sampler),
+            scheduler:    getMultiSelect(multiSelect.value.scheduler),
+        };
+
+        // exclude parameters handled by multiParams
+        const currentParams = { ...params.value };
+        for (const key of Object.keys(multiParams)) {
+            delete currentParams[key];
+        }
+
+        // given: {'a': [1, 2, 3], 'b':[4, 5], 'c':[]}
+        // returns: [{'a':1,'b':4},{'a':1,'b':5},{'a':2,'b':4},{'a':2,'b':5},{'a':3,'b':4},{'a':3,'b':5}]
+        const cartesianProduct = <T>(input: Record<string, any[]>): Record<string, any>[] => {
+            const entries = Object.entries(input).filter(([_, values]) => values.length > 0);
+            // will return the initial value [{}] if entries is empty
+            return entries.reduce<Record<string, T>[]>((acc, [key, values]) => {
+                const newAcc: Record<string, T>[] = [];
+                for (const currentObj of acc) {
+                    for (const value of values) {
+                        newAcc.push({ ...currentObj, [key]: value });
+                    }
+                }
+                return newAcc;
+            }, [{}]); 
+        }
+
+        const combinations = cartesianProduct(multiParams);
+        if (DEBUG_MODE) console.log("multi parameters:", multiParams)
+        if (DEBUG_MODE) console.log("combos:", combinations)
 
         const models = [ await updateAvailableModels() ];
-        for (const currentGuidance of guidances) {
-            for (const currentSteps of steps) {
-                for (const currentClipSkip of clipSkips) {
-                for (const currentPrompt of prompts) {
-                    const p = currentPrompt.split(" ### ");
-                    for (const currentSampler of (
-                        samplers
-                    )) {
-                        let origseed:number = parseInt((params.value.seed).toString());
-                        if (isNaN(origseed) || origseed < 0)
-                        {
-                            origseed = getNewSeed();
-                        }
-                        for (let i = 0; i < params.value.n; i++) {
-                            const seed = (origseed + parseInt(i.toString()));
-                            let newgen:any = {
-                                prompt: currentPrompt,
-                                params: {
-                                    ...params.value,
-                                    seed: seed,
-                                    sampler_name: currentSampler,
-                                    cfg_scale: currentGuidance,
-                                    steps: currentSteps,
-                                    clip_skip: currentClipSkip,
-                                    prompt: p[0],
-                                    negative_prompt: p[1] || "",
-                                    init_images: sourceImage ? [ sourceImage.split(",")[1] ] : [],
-                                    mask: maskImage,
-                                    inpainting_mask_invert: (maskImage?0:null),
-                                    inpainting_fill: (maskImage?1:null)
-                                },
-                                source_image: sourceImage?.split(",")[1],
-                                source_mask: maskImage,
-                                source_processing: sourceProcessing,
-                                models: models
-                            };
-                            //don't send any default or unwanted params
-                            if(newgen.params["sampler_name"]=="default")
-                            {
-                                delete newgen.params["sampler_name"];
-                            }
-                            if(newgen.params["scheduler"]=="default")
-                            {
-                                delete newgen.params["scheduler"];
-                            }
-                            if(newgen.params["frames"] && newgen.params["frames"]<=1)
-                            {
-                                delete newgen.params["frames"];
-                            }
-                            if(referenceBase64Images && referenceBase64Images.length>0)
-                            {
-                                newgen.params["extra_images"] = referenceBase64Images;
-                            }
-                            if(useOptionsStore().alsoRequestAvi === "Enabled" && newgen.params["frames"] && newgen.params["frames"]>1)
-                            {
-                                newgen.params["video_output_type"] = 2; //request avi to download as well
-                            }
-                            paramsCached.push(newgen);
-                        }
-                    }
-                }}
+        for (const currentPrompt of prompts) {
+            const p = currentPrompt.split(" ### ");
+            for (const combo of combinations) {
+                let newgen:any = {
+                    prompt: currentPrompt,
+                    params: {
+                        ...currentParams,
+                        ...combo,
+                        prompt: p[0],
+                        negative_prompt: p[1] || "",
+                        init_images: sourceImage ? [ sourceImage.split(",")[1] ] : [],
+                        mask: maskImage,
+                        inpainting_mask_invert: (maskImage?0:null),
+                        inpainting_fill: (maskImage?1:null)
+                    },
+                    source_image: sourceImage?.split(",")[1],
+                    source_mask: maskImage,
+                    source_processing: sourceProcessing,
+                    models: models
+                };
+                //don't send any default or unwanted params
+                if(newgen.params["sampler_name"]=="default")
+                {
+                    delete newgen.params["sampler_name"];
+                }
+                if(newgen.params["scheduler"]=="default")
+                {
+                    delete newgen.params["scheduler"];
+                }
+                if(newgen.params["frames"] && newgen.params["frames"]<=1)
+                {
+                    delete newgen.params["frames"];
+                }
+                if(referenceBase64Images && referenceBase64Images.length>0)
+                {
+                    newgen.params["extra_images"] = referenceBase64Images;
+                }
+                if(useOptionsStore().alsoRequestAvi === "Enabled" && newgen.params["frames"] && newgen.params["frames"]>1)
+                {
+                    newgen.params["video_output_type"] = 2; //request avi to download as well
+                }
+                paramsCached.push(newgen);
             }
         }
 
