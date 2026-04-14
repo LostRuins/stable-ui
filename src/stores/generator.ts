@@ -252,9 +252,9 @@ export const useGeneratorStore = defineStore("generator", () => {
         }
 
         const getMultiSelect = <T>(item: IMultiSelectItem<T>, fallback: T): T[] => {
-            if (item.state === "Disabled") return [fallback];
+            if (item.state === "Disabled") return [];
             if (item.state === "Enabled") return [fallback]; // single-select: always use live params
-            if (item.state === "Multiple" && item.selected.length === 0) return [fallback];
+            if (item.state === "Multiple" && item.selected.length === 0) return [];
             return item.selected; // "Multiple" with selections: use the multi-select list
         };
 
