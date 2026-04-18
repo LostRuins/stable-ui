@@ -502,7 +502,7 @@ export const useGeneratorStore = defineStore("generator", () => {
     /**
      * Prepare an image for going through text2img on the Horde
      * */
-    function generateText2Img(data: ImageData, correctDimensions = true) {
+    async function generateText2Img(data: ImageData, correctDimensions = true) {
         const defaults = getDefaultStore();
         generatorType.value = "Text2Img";
         multiSelect.value.guidance.state  = "Enabled";
@@ -520,7 +520,18 @@ export const useGeneratorStore = defineStore("generator", () => {
             prompt.value = splitPrompt[0];
             negativePrompt.value = splitPrompt[1] || "";
         }
-        if (data.sampler_name)    params.value.sampler_name = data.sampler_name;
+        if (data.sampler_name) {
+            const optionsStore = useOptionsStore();
+            const baseUrl = optionsStore.baseURL.length === 0 ? "." : optionsStore.baseURL;
+            try {
+                const response = await fetch(`${baseUrl}/sdapi/v1/samplers`);
+                const samplers = await response.json();
+                const sampler = samplers.find((s: any) => s.name === data.sampler_name || (s.aliases && s.aliases.includes(data.sampler_name)));
+                params.value.sampler_name = sampler ? sampler.name : data.sampler_name;
+            } catch (e) {
+                params.value.sampler_name = data.sampler_name;
+            }
+        }
         if (data.steps)           params.value.steps = validateParam("steps", data.steps, maxSteps.value, defaults.steps as number);
         if (data.cfg_scale)       params.value.cfg_scale = data.cfg_scale;
         if (data.width)           params.value.width = validateParam("width", data.width, maxDimensions.value, defaults.width as number);
