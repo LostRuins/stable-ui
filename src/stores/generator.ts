@@ -644,12 +644,10 @@ export const useGeneratorStore = defineStore("generator", () => {
 
     // Cache variables
     const cacheVersion = ref(0);
-    let samplersPromise: Promise<any[]> | null = null;
-    let schedulersPromise: Promise<any[]> | null = null;
+    const cacheMap = new Map<string, Promise<any>>();
 
     function invalidateApiCaches() {
-        samplersPromise = null;
-        schedulersPromise = null;
+        cacheMap.clear();
         cacheVersion.value++;
     }
 
@@ -661,50 +659,39 @@ export const useGeneratorStore = defineStore("generator", () => {
         }
     );
 
-    async function getAvailableSamplers(): Promise<any[]> {
+    // fetch endpoint information and keep a cache of the result
+    async function getCachedEndpoint<T>(endpoint: string): Promise<T | null> {
         const optionsStore = useOptionsStore();
-        if (samplersPromise) {
-            return samplersPromise;
+        const baseUrl = optionsStore.baseURL.length === 0 ? "." : optionsStore.baseURL;
+        const fullUrl = (baseUrl.replace(/\/+$/, "") || ".") + "/" + endpoint.replace(/^\/+/, "");
+        if (cacheMap.has(fullUrl)) {
+            return cacheMap.get(fullUrl);
         }
-        samplersPromise = (async () => {
+        const fetchPromise = (async (): Promise<T | null> => {
             try {
-                const baseUrl = optionsStore.baseURL.length === 0 ? "." : optionsStore.baseURL;
-                const response = await fetch(`${baseUrl}/sdapi/v1/samplers`);
-                if (!response.ok) {
-                    samplersPromise = null;
-                    return [];
+                const response = await fetch(fullUrl);
+                if (response.ok) {
+                    return (await response.json()) as T;
                 }
-                const resJSON: any[] = await response.json();
-                return Array.isArray(resJSON) ? resJSON : [];
-            } catch (e) {
-                samplersPromise = null;
-                return [];
+                console.error(`API Error: ${response.status} ${response.statusText} at ${fullUrl}`);
+            } catch (error) {
+                console.error(`Fetch error for ${fullUrl}:`, error);
             }
+            cacheMap.delete(fullUrl);
+            return null;
         })();
-        return samplersPromise;
+        cacheMap.set(fullUrl, fetchPromise);
+        return fetchPromise;
+    }
+
+    async function getAvailableSamplers(): Promise<any[]> {
+        const result = await getCachedEndpoint<any[]>("/sdapi/v1/samplers");
+        return Array.isArray(result) ? result : [];
     }
 
     async function getAvailableSchedulers(): Promise<any[]> {
-        const optionsStore = useOptionsStore();
-        if (schedulersPromise) {
-            return schedulersPromise;
-        }
-        schedulersPromise = (async () => {
-            try {
-                const baseUrl = optionsStore.baseURL.length === 0 ? "." : optionsStore.baseURL;
-                const response = await fetch(`${baseUrl}/sdapi/v1/schedulers`);
-                if (!response.ok) {
-                    schedulersPromise = null;
-                    return [];
-                }
-                const resJSON: any[] = await response.json();
-                return Array.isArray(resJSON) ? resJSON : [];
-            } catch (e) {
-                schedulersPromise = null;
-                return [];
-            }
-        })();
-        return schedulersPromise;
+        const result = await getCachedEndpoint<any[]>("/sdapi/v1/schedulers");
+        return Array.isArray(result) ? result : [];
     }
 
     function pushToNegativeLibrary(prompt: string) {
@@ -835,11 +822,10 @@ export const useGeneratorStore = defineStore("generator", () => {
         removeFromPromptHistory,
         setExtraImage,
         clearExtraImage,
-        samplersPromise,
         getAvailableSamplers,
-        schedulersPromise,
         getAvailableSchedulers,
         cacheVersion,
         invalidateApiCaches,
+        getCachedEndpoint
     };
 });
