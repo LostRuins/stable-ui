@@ -1,4 +1,4 @@
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { defineStore } from "pinia";
 import { useOutputStore, type ImageData } from "./outputs";
 import { useUIStore } from "./ui";
@@ -521,15 +521,12 @@ export const useGeneratorStore = defineStore("generator", () => {
             negativePrompt.value = splitPrompt[1] || "";
         }
         if (data.sampler_name) {
-            const optionsStore = useOptionsStore();
-            const baseUrl = optionsStore.baseURL.length === 0 ? "." : optionsStore.baseURL;
-            try {
-                const response = await fetch(`${baseUrl}/sdapi/v1/samplers`);
-                const samplers = await response.json();
-                const sampler = samplers.find((s: any) => s.name === data.sampler_name || (s.aliases && s.aliases.includes(data.sampler_name)));
-                params.value.sampler_name = sampler ? sampler.name : data.sampler_name;
-            } catch (e) {
-                params.value.sampler_name = data.sampler_name;
+            params.value.sampler_name = data.sampler_name;
+            // see if it is an alias instead of the main name
+            const samplers = await getAvailableSamplers();
+            const sampler = samplers.find((s: any) => (s.aliases && s.aliases.includes(data.sampler_name)));
+            if (sampler) {
+                params.value.sampler_name = sampler.name;
             }
         }
         if (data.steps)           params.value.steps = validateParam("steps", data.steps, maxSteps.value, defaults.steps as number);
@@ -643,6 +640,71 @@ export const useGeneratorStore = defineStore("generator", () => {
         if (!validateResponse(response, resJSON, 200, "Failed to get available models")) return;
         if (resJSON.length === 0) return "(No model loaded)";
         return resJSON[0].model_name;
+    }
+
+    // Cache variables
+    const cacheVersion = ref(0);
+    let samplersPromise: Promise<any[]> | null = null;
+    let schedulersPromise: Promise<any[]> | null = null;
+
+    function invalidateApiCaches() {
+        samplersPromise = null;
+        schedulersPromise = null;
+        cacheVersion.value++;
+    }
+
+    // Watch baseURL and clear cache if it changes
+    watch(
+        () => useOptionsStore().baseURL,
+        () => {
+            invalidateApiCaches();
+        }
+    );
+
+    async function getAvailableSamplers(): Promise<any[]> {
+        const optionsStore = useOptionsStore();
+        if (samplersPromise) {
+            return samplersPromise;
+        }
+        samplersPromise = (async () => {
+            try {
+                const baseUrl = optionsStore.baseURL.length === 0 ? "." : optionsStore.baseURL;
+                const response = await fetch(`${baseUrl}/sdapi/v1/samplers`);
+                if (!response.ok) {
+                    samplersPromise = null;
+                    return [];
+                }
+                const resJSON: any[] = await response.json();
+                return Array.isArray(resJSON) ? resJSON : [];
+            } catch (e) {
+                samplersPromise = null;
+                return [];
+            }
+        })();
+        return samplersPromise;
+    }
+
+    async function getAvailableSchedulers(): Promise<any[]> {
+        const optionsStore = useOptionsStore();
+        if (schedulersPromise) {
+            return schedulersPromise;
+        }
+        schedulersPromise = (async () => {
+            try {
+                const baseUrl = optionsStore.baseURL.length === 0 ? "." : optionsStore.baseURL;
+                const response = await fetch(`${baseUrl}/sdapi/v1/schedulers`);
+                if (!response.ok) {
+                    schedulersPromise = null;
+                    return [];
+                }
+                const resJSON: any[] = await response.json();
+                return Array.isArray(resJSON) ? resJSON : [];
+            } catch (e) {
+                schedulersPromise = null;
+                return [];
+            }
+        })();
+        return schedulersPromise;
     }
 
     function pushToNegativeLibrary(prompt: string) {
@@ -773,5 +835,11 @@ export const useGeneratorStore = defineStore("generator", () => {
         removeFromPromptHistory,
         setExtraImage,
         clearExtraImage,
+        samplersPromise,
+        getAvailableSamplers,
+        schedulersPromise,
+        getAvailableSchedulers,
+        cacheVersion,
+        invalidateApiCaches,
     };
 });
