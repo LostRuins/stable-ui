@@ -1,4 +1,4 @@
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { defineStore } from "pinia";
 import { useOutputStore, type ImageData } from "./outputs";
 import { useUIStore } from "./ui";
@@ -502,7 +502,7 @@ export const useGeneratorStore = defineStore("generator", () => {
     /**
      * Prepare an image for going through text2img on the Horde
      * */
-    function generateText2Img(data: ImageData, correctDimensions = true) {
+    async function generateText2Img(data: ImageData, correctDimensions = true) {
         const defaults = getDefaultStore();
         generatorType.value = "Text2Img";
         multiSelect.value.guidance.state  = "Enabled";
@@ -520,7 +520,15 @@ export const useGeneratorStore = defineStore("generator", () => {
             prompt.value = splitPrompt[0];
             negativePrompt.value = splitPrompt[1] || "";
         }
-        if (data.sampler_name)    params.value.sampler_name = data.sampler_name;
+        if (data.sampler_name) {
+            params.value.sampler_name = data.sampler_name;
+            // see if it is an alias instead of the main name
+            const samplers = await getAvailableSamplers();
+            const sampler = samplers.find((s: any) => (s.aliases && s.aliases.includes(data.sampler_name)));
+            if (sampler) {
+                params.value.sampler_name = sampler.name;
+            }
+        }
         if (data.steps)           params.value.steps = validateParam("steps", data.steps, maxSteps.value, defaults.steps as number);
         if (data.cfg_scale)       params.value.cfg_scale = data.cfg_scale;
         if (data.width)           params.value.width = validateParam("width", data.width, maxDimensions.value, defaults.width as number);
@@ -632,6 +640,58 @@ export const useGeneratorStore = defineStore("generator", () => {
         if (!validateResponse(response, resJSON, 200, "Failed to get available models")) return;
         if (resJSON.length === 0) return "(No model loaded)";
         return resJSON[0].model_name;
+    }
+
+    // Cache variables
+    const cacheVersion = ref(0);
+    const cacheMap = new Map<string, Promise<any>>();
+
+    function invalidateApiCaches() {
+        cacheMap.clear();
+        cacheVersion.value++;
+    }
+
+    // Watch baseURL and clear cache if it changes
+    watch(
+        () => useOptionsStore().baseURL,
+        () => {
+            invalidateApiCaches();
+        }
+    );
+
+    // fetch endpoint information and keep a cache of the result
+    async function getCachedEndpoint<T>(endpoint: string): Promise<T | null> {
+        const optionsStore = useOptionsStore();
+        const baseUrl = optionsStore.baseURL.length === 0 ? "." : optionsStore.baseURL;
+        const fullUrl = (baseUrl.replace(/\/+$/, "") || ".") + "/" + endpoint.replace(/^\/+/, "");
+        if (cacheMap.has(fullUrl)) {
+            return cacheMap.get(fullUrl);
+        }
+        const fetchPromise = (async (): Promise<T | null> => {
+            try {
+                const response = await fetch(fullUrl);
+                if (response.ok) {
+                    return (await response.json()) as T;
+                }
+                console.error(`API Error: ${response.status} ${response.statusText} at ${fullUrl}`);
+            } catch (error) {
+                console.error(`Fetch error for ${fullUrl}:`, error);
+            }
+            cacheMap.delete(fullUrl);
+            return null;
+        })();
+        cacheMap.set(fullUrl, fetchPromise);
+        return fetchPromise;
+    }
+
+    async function getAvailableSamplers(): Promise<any[]> {
+        const result = await getCachedEndpoint<any[]>("/sdapi/v1/samplers");
+        return Array.isArray(result) ? result : [];
+    }
+
+    async function getAvailableSchedulers(): Promise<any[]> {
+        const result = await getCachedEndpoint<any[]>("/sdapi/v1/schedulers");
+        return Array.isArray(result) ? result : [];
     }
 
     function pushToNegativeLibrary(prompt: string) {
@@ -762,5 +822,10 @@ export const useGeneratorStore = defineStore("generator", () => {
         removeFromPromptHistory,
         setExtraImage,
         clearExtraImage,
+        getAvailableSamplers,
+        getAvailableSchedulers,
+        cacheVersion,
+        invalidateApiCaches,
+        getCachedEndpoint
     };
 });

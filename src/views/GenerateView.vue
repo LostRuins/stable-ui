@@ -46,33 +46,21 @@ const uiStore = useUIStore();
 const canvasStore = useCanvasStore();
 const optionsStore = useOptionsStore();
 
-let samplerList = [] as string[];
-
 const availableSamplers = computedAsync(async () => {
-    if (samplerList.length === 0) {
-        try {
-            samplerList = (await (await fetch(`${optionsStore.baseURL.length === 0 ? "." : optionsStore.baseURL}/sdapi/v1/samplers`)).json()).map((el: any) => el.name);
-        } catch (e) {
-            samplerList = [];
-        }
-    }
+    const _ignore     = store.cacheVersion; // force update when cached value changes
+    const samplers    = await store.getAvailableSamplers();
+    const samplerList = samplers.map((el: any) => el.name);
     if (samplerList.length === 0) return [];
     return updateCurrentSampler(samplerList);
-})
-
-let schedulerList = [] as string[];
+}, [])
 
 const availableSchedulers = computedAsync(async () => {
-    if (schedulerList.length === 0) {
-        try {
-            schedulerList = (await (await fetch(`${optionsStore.baseURL.length === 0 ? "." : optionsStore.baseURL}/sdapi/v1/schedulers`)).json()).map((el: any) => el.name);
-        } catch (e) {
-            schedulerList = [];
-        }
-    }
+    const _ignore       = store.cacheVersion; // force update when cached value changes
+    const schedulers    = await store.getAvailableSchedulers();
+    const schedulerList = schedulers.map((el: any) => el.name);
     if (schedulerList.length === 0) return [];
     return updateCurrentScheduler(schedulerList);
-})
+}, [])
 
 const rules = reactive<FormRules>({
     prompt: [{
