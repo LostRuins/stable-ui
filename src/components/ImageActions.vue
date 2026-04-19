@@ -50,6 +50,11 @@ const confirmDelete = () => {
         })
 }
 
+const getDownloadFilename = (imageData: ImageData) => {
+    const timestamp = imageData.job_timestamp ? `${imageData.job_timestamp}-` : '';
+    return `${timestamp}${imageData.seed}-${imageData.prompt}`;
+}
+
 const dismissImage = () => {
     useGeneratorStore().clearOutputs();
     useUIStore().showGeneratedImages = false;
@@ -106,7 +111,7 @@ async function copyLink(imageData: ImageData) {
 
 <template>
     <el-button class="compact-button" @click="confirmDelete" type="danger" size="small" :icon="Delete" plain>Delete</el-button>
-    <el-button class="compact-button" @click="downloadImage(imageData.image, `${imageData.seed}-${imageData.prompt}`)" type="success" size="small" :icon="Download" plain>Download</el-button>
+    <el-button class="compact-button" @click="downloadImage(imageData.image, getDownloadFilename(imageData))" type="success" size="small" :icon="Download" plain>Download</el-button>
     <el-button class="compact-button" v-if="!imageData.starred" @click="outputStore.toggleStarred(imageData.id)" type="warning" size="small" :icon="Star" plain>Star</el-button>
     <el-button class="compact-button" v-if="imageData.starred" @click="outputStore.toggleStarred(imageData.id)" type="warning" size="small" :icon="StarFilled" plain>Unstar</el-button>
     <el-button class="compact-button" @click="store.generateText2Img(imageData)" type="success" size="small" plain>Txt2img</el-button>
