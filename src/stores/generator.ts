@@ -443,6 +443,10 @@ export const useGeneratorStore = defineStore("generator", () => {
                             }
                         });
 
+                        if (info['job_timestamp'] != null) {
+                            params.job_timestamp = info['job_timestamp'];
+                        }
+
                         // fields which need special mapping
                         if (info['extra_generation_params'] && info.extra_generation_params['Schedule type']) {
                             params.scheduler = info.extra_generation_params['Schedule type'];
