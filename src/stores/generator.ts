@@ -240,8 +240,17 @@ export const useGeneratorStore = defineStore("generator", () => {
         // Cache parameters so the user can't mutate the output data while it's generating
         const paramsCached: any[] = [];
 
-        const prompts = promptMatrix();
+        // split "###" and {|} syntax
+        const processedPrompts = promptMatrix().map(ps => {
+            const p = ps.split(" ### ");
+            return {
+                full_prompt: ps,
+                prompt: p[0],
+                negative_prompt: p[1] || ""
+            };
+        });
 
+        // create list of seeds
         let origseed: number = parseInt((params.value.seed).toString());
         if (isNaN(origseed) || origseed < 0) {
             origseed = getNewSeed();
@@ -259,6 +268,7 @@ export const useGeneratorStore = defineStore("generator", () => {
         };
 
         let multiParams: any = {
+            promptVariant: processedPrompts,
             seed:         seeds,
             cfg_scale:    getMultiSelect(multiSelect.value.guidance,  params.value.cfg_scale),
             steps:        getMultiSelect(multiSelect.value.steps,     params.value.steps),
@@ -294,49 +304,46 @@ export const useGeneratorStore = defineStore("generator", () => {
         if (DEBUG_MODE) console.log("combos:", combinations)
 
         const models = [ await updateAvailableModels() ];
-        for (const currentPrompt of prompts) {
-            const p = currentPrompt.split(" ### ");
-            for (const combo of combinations) {
-                let newgen:any = {
-                    prompt: currentPrompt,
-                    params: {
-                        ...currentParams,
-                        ...combo,
-                        prompt: p[0],
-                        negative_prompt: p[1] || "",
-                        init_images: sourceImage ? [ sourceImage.split(",")[1] ] : [],
-                        mask: maskImage,
-                        inpainting_mask_invert: (maskImage?0:null),
-                        inpainting_fill: (maskImage?1:null)
-                    },
-                    source_image: sourceImage?.split(",")[1],
-                    source_mask: maskImage,
-                    source_processing: sourceProcessing,
-                    models: models
-                };
-                //don't send any default or unwanted params
-                if(newgen.params["sampler_name"]=="default")
-                {
-                    delete newgen.params["sampler_name"];
-                }
-                if(newgen.params["scheduler"]=="default")
-                {
-                    delete newgen.params["scheduler"];
-                }
-                if(newgen.params["frames"] && newgen.params["frames"]<=1)
-                {
-                    delete newgen.params["frames"];
-                }
-                if(referenceBase64Images && referenceBase64Images.length>0)
-                {
-                    newgen.params["extra_images"] = referenceBase64Images;
-                }
-                if(useOptionsStore().alsoRequestAvi === "Enabled" && newgen.params["frames"] && newgen.params["frames"]>1)
-                {
-                    newgen.params["video_output_type"] = 2; //request avi to download as well
-                }
-                paramsCached.push(newgen);
+        for (const combo of combinations) {
+            const { promptVariant: { full_prompt, ...promptParams }, ...comboParams } = combo;
+            let newgen:any = {
+                prompt: full_prompt,
+                params: {
+                    ...currentParams,
+                    ...comboParams,
+                    ...promptParams,
+                    init_images: sourceImage ? [ sourceImage.split(",")[1] ] : [],
+                    mask: maskImage,
+                    inpainting_mask_invert: (maskImage?0:null),
+                    inpainting_fill: (maskImage?1:null)
+                },
+                source_image: sourceImage?.split(",")[1],
+                source_mask: maskImage,
+                source_processing: sourceProcessing,
+                models: models
+            };
+            //don't send any default or unwanted params
+            if(newgen.params["sampler_name"]=="default")
+            {
+                delete newgen.params["sampler_name"];
             }
+            if(newgen.params["scheduler"]=="default")
+            {
+                delete newgen.params["scheduler"];
+            }
+            if(newgen.params["frames"] && newgen.params["frames"]<=1)
+            {
+                delete newgen.params["frames"];
+            }
+            if(referenceBase64Images && referenceBase64Images.length>0)
+            {
+                newgen.params["extra_images"] = referenceBase64Images;
+            }
+            if(useOptionsStore().alsoRequestAvi === "Enabled" && newgen.params["frames"] && newgen.params["frames"]>1)
+            {
+                newgen.params["video_output_type"] = 2; //request avi to download as well
+            }
+            paramsCached.push(newgen);
         }
 
         if (DEBUG_MODE) console.log("Using generation parameters:", paramsCached)
