@@ -9,6 +9,7 @@ import { useCanvasStore } from "./canvas";
 import { useLocalStorage } from "@vueuse/core";
 import { DEBUG_MODE, MAX_PARALLEL_REQUESTS } from "@/constants";
 import { validateResponse } from "@/utils/validate";
+import { extractLorasFromPrompt } from "@/utils/loras";
 function getDefaultStore() {
     return {
         steps: 20,
@@ -222,6 +223,18 @@ export const useGeneratorStore = defineStore("generator", () => {
     }
 
     /**
+     * Fetches available LoRAs from the server
+     * */
+    async function fetchLoras(): Promise<any[]> {
+        const optionsStore = useOptionsStore();
+        const baseUrl = optionsStore.baseURL.length === 0 ? "." : optionsStore.baseURL;
+        const response = await fetch(`${baseUrl}/sdapi/v1/loras`);
+        const resJSON = await response.json();
+        if (!validateResponse(response, resJSON, 200, "Failed to get available LoRAs")) return [];
+        return resJSON;
+    }
+
+    /**
      * Generates images on the Horde; returns a list of image(s)
      * */
     async function generateImage(type: typeof generatorType["value"]) {
@@ -241,12 +254,41 @@ export const useGeneratorStore = defineStore("generator", () => {
         const paramsCached: any[] = [];
 
         // split "###" and {|} syntax
-        const processedPrompts = promptMatrix().map(ps => {
+        const processedRawPrompts = promptMatrix().map(ps => {
             const p = ps.split(" ### ");
             return {
                 full_prompt: ps,
                 prompt: p[0],
                 negative_prompt: p[1] || ""
+            };
+        });
+
+        // extract <lora:name:value> and build the lora field
+        const promptsAndLoras = processedRawPrompts.map(ps => {
+            const [cleanedPrompt, extractedLoras] = extractLorasFromPrompt(ps.prompt);
+            return { ...ps, prompt: cleanedPrompt, extractedLoras: extractedLoras };
+        });
+
+        const availableLoras = (
+            promptsAndLoras.some(ps => ps.extractedLoras.length > 0)
+            ? await fetchLoras() : []);
+
+        const processedPrompts = promptsAndLoras.map(({ extractedLoras, ...ps }) => {
+            const loraRequest = (
+                extractedLoras.length > 0 && availableLoras.length > 0 ?
+                    extractedLoras.map(l => {
+                        const match = availableLoras.find(al => al.name === l.name || al.path === l.name);
+                        return {
+                            path: match ? match.path : l.name,
+                            multiplier: l.multiplier,
+                            ...(l.is_high_noise ? { is_high_noise: true } : {}),
+                        };
+                    }) : []
+            );
+
+            return {
+                ...ps,
+                ...(loraRequest.length > 0 ? { lora: loraRequest } : {})
             };
         });
 
