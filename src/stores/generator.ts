@@ -250,15 +250,13 @@ export const useGeneratorStore = defineStore("generator", () => {
             };
         });
 
+        const { seed, cfg_scale, steps, clip_skip, sampler_name, scheduler, n: batch_size,
+            ...currentParams } = params.value;
+
         // create list of seeds
-        let origseed: number = parseInt((params.value.seed).toString());
-        if (isNaN(origseed) || origseed < 0) {
-            origseed = getNewSeed();
-        }
-        const seeds: number[] = [];
-        for (let i = 0; i < params.value.n; i++) {
-            seeds.push(origseed + i);
-        }
+        const reqseed  = parseInt(seed.toString());
+        const origseed = isNaN(reqseed) || reqseed < 0 ? getNewSeed() : reqseed;
+        const seeds    = Array.from({ length: batch_size }, (_, i) => origseed + i);
 
         const getMultiSelect = <T>(item: IMultiSelectItem<T>, fallback: T): T[] => {
             if (item.state === "Disabled") return [];
@@ -267,21 +265,15 @@ export const useGeneratorStore = defineStore("generator", () => {
             return item.selected; // "Multiple" with selections: use the multi-select list
         };
 
-        let multiParams: any = {
+        const multiParams = {
             promptVariant: processedPrompts,
-            seed:         seeds,
-            cfg_scale:    getMultiSelect(multiSelect.value.guidance,  params.value.cfg_scale),
-            steps:        getMultiSelect(multiSelect.value.steps,     params.value.steps),
-            clip_skip:    getMultiSelect(multiSelect.value.clipSkip,  params.value.clip_skip),
-            sampler_name: getMultiSelect(multiSelect.value.sampler,   params.value.sampler_name),
-            scheduler:    getMultiSelect(multiSelect.value.scheduler, params.value.scheduler),
+            seed:          seeds,
+            cfg_scale:     getMultiSelect(multiSelect.value.guidance,  cfg_scale),
+            steps:         getMultiSelect(multiSelect.value.steps,     steps),
+            clip_skip:     getMultiSelect(multiSelect.value.clipSkip,  clip_skip),
+            sampler_name:  getMultiSelect(multiSelect.value.sampler,   sampler_name),
+            scheduler:     getMultiSelect(multiSelect.value.scheduler, scheduler),
         };
-
-        // exclude parameters handled by multiParams
-        const currentParams = { ...params.value } as Record<string, any>;
-        for (const key of Object.keys(multiParams)) {
-            delete currentParams[key];
-        }
 
         // given: {'a': [1, 2, 3], 'b':[4, 5], 'c':[]}
         // returns: [{'a':1,'b':4},{'a':1,'b':5},{'a':2,'b':4},{'a':2,'b':5},{'a':3,'b':4},{'a':3,'b':5}]
