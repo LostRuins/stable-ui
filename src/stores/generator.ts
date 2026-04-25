@@ -9,6 +9,7 @@ import { useCanvasStore } from "./canvas";
 import { useLocalStorage } from "@vueuse/core";
 import { DEBUG_MODE, MAX_PARALLEL_REQUESTS } from "@/constants";
 import { validateResponse } from "@/utils/validate";
+import { extractLorasFromPrompt } from "@/utils/loras";
 function getDefaultStore() {
     return {
         steps: 20,
@@ -222,6 +223,18 @@ export const useGeneratorStore = defineStore("generator", () => {
     }
 
     /**
+     * Fetches available LoRAs from the server
+     * */
+    async function fetchLoras(): Promise<any[]> {
+        const optionsStore = useOptionsStore();
+        const baseUrl = optionsStore.baseURL.length === 0 ? "." : optionsStore.baseURL;
+        const response = await fetch(`${baseUrl}/sdapi/v1/loras`);
+        const resJSON = await response.json();
+        if (!validateResponse(response, resJSON, 200, "Failed to get available LoRAs")) return [];
+        return resJSON;
+    }
+
+    /**
      * Generates images on the Horde; returns a list of image(s)
      * */
     async function generateImage(type: typeof generatorType["value"]) {
@@ -240,16 +253,52 @@ export const useGeneratorStore = defineStore("generator", () => {
         // Cache parameters so the user can't mutate the output data while it's generating
         const paramsCached: any[] = [];
 
-        const prompts = promptMatrix();
+        // split "###" and {|} syntax
+        const processedRawPrompts = promptMatrix().map(ps => {
+            const p = ps.split(" ### ");
+            return {
+                full_prompt: ps,
+                prompt: p[0],
+                negative_prompt: p[1] || ""
+            };
+        });
 
-        let origseed: number = parseInt((params.value.seed).toString());
-        if (isNaN(origseed) || origseed < 0) {
-            origseed = getNewSeed();
-        }
-        const seeds: number[] = [];
-        for (let i = 0; i < params.value.n; i++) {
-            seeds.push(origseed + i);
-        }
+        // extract <lora:name:value> and build the lora field
+        const promptsAndLoras = processedRawPrompts.map(ps => {
+            const [cleanedPrompt, extractedLoras] = extractLorasFromPrompt(ps.prompt);
+            return { ...ps, prompt: cleanedPrompt, extractedLoras: extractedLoras };
+        });
+
+        const availableLoras = (
+            promptsAndLoras.some(ps => ps.extractedLoras.length > 0)
+            ? await fetchLoras() : []);
+
+        const processedPrompts = promptsAndLoras.map(({ extractedLoras, ...ps }) => {
+            const loraRequest = (
+                extractedLoras.length > 0 && availableLoras.length > 0 ?
+                    extractedLoras.map(l => {
+                        const match = availableLoras.find(al => al.name === l.name || al.path === l.name);
+                        return {
+                            path: match ? match.path : l.name,
+                            multiplier: l.multiplier,
+                            ...(l.is_high_noise ? { is_high_noise: true } : {}),
+                        };
+                    }) : []
+            );
+
+            return {
+                ...ps,
+                ...(loraRequest.length > 0 ? { lora: loraRequest } : {})
+            };
+        });
+
+        const { seed, cfg_scale, steps, clip_skip, sampler_name, scheduler, n: batch_size,
+            ...currentParams } = params.value;
+
+        // create list of seeds
+        const reqseed  = parseInt(seed.toString());
+        const origseed = isNaN(reqseed) || reqseed < 0 ? getNewSeed() : reqseed;
+        const seeds    = Array.from({ length: batch_size }, (_, i) => origseed + i);
 
         const getMultiSelect = <T>(item: IMultiSelectItem<T>, fallback: T): T[] => {
             if (item.state === "Disabled") return [];
@@ -258,20 +307,15 @@ export const useGeneratorStore = defineStore("generator", () => {
             return item.selected; // "Multiple" with selections: use the multi-select list
         };
 
-        let multiParams: any = {
-            seed:         seeds,
-            cfg_scale:    getMultiSelect(multiSelect.value.guidance,  params.value.cfg_scale),
-            steps:        getMultiSelect(multiSelect.value.steps,     params.value.steps),
-            clip_skip:    getMultiSelect(multiSelect.value.clipSkip,  params.value.clip_skip),
-            sampler_name: getMultiSelect(multiSelect.value.sampler,   params.value.sampler_name),
-            scheduler:    getMultiSelect(multiSelect.value.scheduler, params.value.scheduler),
+        const multiParams = {
+            promptVariant: processedPrompts,
+            seed:          seeds,
+            cfg_scale:     getMultiSelect(multiSelect.value.guidance,  cfg_scale),
+            steps:         getMultiSelect(multiSelect.value.steps,     steps),
+            clip_skip:     getMultiSelect(multiSelect.value.clipSkip,  clip_skip),
+            sampler_name:  getMultiSelect(multiSelect.value.sampler,   sampler_name),
+            scheduler:     getMultiSelect(multiSelect.value.scheduler, scheduler),
         };
-
-        // exclude parameters handled by multiParams
-        const currentParams = { ...params.value } as Record<string, any>;
-        for (const key of Object.keys(multiParams)) {
-            delete currentParams[key];
-        }
 
         // given: {'a': [1, 2, 3], 'b':[4, 5], 'c':[]}
         // returns: [{'a':1,'b':4},{'a':1,'b':5},{'a':2,'b':4},{'a':2,'b':5},{'a':3,'b':4},{'a':3,'b':5}]
@@ -294,49 +338,46 @@ export const useGeneratorStore = defineStore("generator", () => {
         if (DEBUG_MODE) console.log("combos:", combinations)
 
         const models = [ await updateAvailableModels() ];
-        for (const currentPrompt of prompts) {
-            const p = currentPrompt.split(" ### ");
-            for (const combo of combinations) {
-                let newgen:any = {
-                    prompt: currentPrompt,
-                    params: {
-                        ...currentParams,
-                        ...combo,
-                        prompt: p[0],
-                        negative_prompt: p[1] || "",
-                        init_images: sourceImage ? [ sourceImage.split(",")[1] ] : [],
-                        mask: maskImage,
-                        inpainting_mask_invert: (maskImage?0:null),
-                        inpainting_fill: (maskImage?1:null)
-                    },
-                    source_image: sourceImage?.split(",")[1],
-                    source_mask: maskImage,
-                    source_processing: sourceProcessing,
-                    models: models
-                };
-                //don't send any default or unwanted params
-                if(newgen.params["sampler_name"]=="default")
-                {
-                    delete newgen.params["sampler_name"];
-                }
-                if(newgen.params["scheduler"]=="default")
-                {
-                    delete newgen.params["scheduler"];
-                }
-                if(newgen.params["frames"] && newgen.params["frames"]<=1)
-                {
-                    delete newgen.params["frames"];
-                }
-                if(referenceBase64Images && referenceBase64Images.length>0)
-                {
-                    newgen.params["extra_images"] = referenceBase64Images;
-                }
-                if(useOptionsStore().alsoRequestAvi === "Enabled" && newgen.params["frames"] && newgen.params["frames"]>1)
-                {
-                    newgen.params["video_output_type"] = 2; //request avi to download as well
-                }
-                paramsCached.push(newgen);
+        for (const combo of combinations) {
+            const { promptVariant: { full_prompt, ...promptParams }, ...comboParams } = combo;
+            let newgen:any = {
+                prompt: full_prompt,
+                params: {
+                    ...currentParams,
+                    ...comboParams,
+                    ...promptParams,
+                    init_images: sourceImage ? [ sourceImage.split(",")[1] ] : [],
+                    mask: maskImage,
+                    inpainting_mask_invert: (maskImage?0:null),
+                    inpainting_fill: (maskImage?1:null)
+                },
+                source_image: sourceImage?.split(",")[1],
+                source_mask: maskImage,
+                source_processing: sourceProcessing,
+                models: models
+            };
+            //don't send any default or unwanted params
+            if(newgen.params["sampler_name"]=="default")
+            {
+                delete newgen.params["sampler_name"];
             }
+            if(newgen.params["scheduler"]=="default")
+            {
+                delete newgen.params["scheduler"];
+            }
+            if(newgen.params["frames"] && newgen.params["frames"]<=1)
+            {
+                delete newgen.params["frames"];
+            }
+            if(referenceBase64Images && referenceBase64Images.length>0)
+            {
+                newgen.params["extra_images"] = referenceBase64Images;
+            }
+            if(useOptionsStore().alsoRequestAvi === "Enabled" && newgen.params["frames"] && newgen.params["frames"]>1)
+            {
+                newgen.params["video_output_type"] = 2; //request avi to download as well
+            }
+            paramsCached.push(newgen);
         }
 
         if (DEBUG_MODE) console.log("Using generation parameters:", paramsCached)
