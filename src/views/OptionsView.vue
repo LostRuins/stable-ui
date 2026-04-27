@@ -92,6 +92,19 @@ async function bulkDownload() {
                     <form-radio :label="item.name" prop="pageless" v-model="item.state" :options="item.allowedStates ?? []" />
                 </div>
                 <form-radio  label="Allow Larger Params" prop="pageless" v-model="store.allowLargerParams" :options="['Enabled', 'Disabled']" />
+                <form-select
+                    label="Image Resize Mode"
+                    prop="imageResizeMode"
+                    v-model="store.imageResizeMode"
+                    :options="[
+                        { label: 'No Scale', value: 'NoScale' },
+                        { label: 'Scale and Crop', value: 'ScaleAndCrop' },
+                        { label: 'Scale and Pad',  value: 'ScaleAndPad'  },
+                        { label: 'Stretch',  value: 'Stretch'  },
+                        { label: 'Original', value: 'Original' },
+                    ]"
+                    info="How to adapt input image dimensions to the requested image size. No Scale: do not scale, just crop or pad each dimension to fit (default behavior). Scale and Crop: scale to match the smaller dimension, preserving aspect ratio, then crop to fit. Scale and Pad: scale to match the larger dimension, preserving aspect ratio, then pad to fit. Stretch: stretch both dimensions to fit, possibly not preserving aspect ratio. Original: send the input image as-is to the server, with no scaling, cropping or padding."
+                />
                 <form-radio  label="Video Gen: Request AVI download" prop="pageless" v-model="store.alsoRequestAvi" :options="['Enabled', 'Disabled']" />
             </el-tab-pane>
             <el-tab-pane label="📷 Images">

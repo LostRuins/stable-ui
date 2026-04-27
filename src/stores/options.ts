@@ -17,6 +17,7 @@ export const useOptionsStore = defineStore("options", () => {
     const autoCarousel = useLocalStorage<IToggle>("autoCarousel", "Enabled");
     const useBeta = useLocalStorage<IToggle>("useBeta", "Disabled");
     const imageDownloadType = useLocalStorage<"WEBP" | "PNG" | "JPG" | "GIF" >("imageDownloadType", "PNG")
+    const imageResizeMode = useLocalStorage<"NoScale" | "Stretch" | "ScaleAndCrop" | "ScaleAndPad" | "Original">("imageResizeMode", "NoScale");
     const baseURL = useLocalStorage("baseURL", "");
 
     // A janky way to fix using color modes
@@ -35,6 +36,7 @@ export const useOptionsStore = defineStore("options", () => {
         autoCarousel,
         useBeta,
         imageDownloadType,
+        imageResizeMode,
         baseURL
     };
 });

@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import { useGeneratorStore } from "./generator";
+import { useOptionsStore } from "./options";
 import { fabric } from "fabric";
 
 export const useCanvasStore = defineStore("canvas", () => {
@@ -261,24 +262,121 @@ export const useCanvasStore = defineStore("canvas", () => {
         })
     }
 
+    /**
+     * Applies a transformation mode to a source canvas and returns a new canvas with the result.
+     */
+    function applyTransform(
+        src: HTMLCanvasElement,
+        targetWidth: number,
+        targetHeight: number,
+        bgColor: any,
+        mode: string
+    ): HTMLCanvasElement {
+        if (mode === "Original" || (src.width === targetWidth && src.height === targetHeight)) {
+            return src;
+        }
+
+        const dst = document.createElement('canvas');
+        dst.width = targetWidth;
+        dst.height = targetHeight;
+
+        const ctx = dst.getContext('2d')!;
+        ctx.fillStyle = bgColor;
+        ctx.fillRect(0, 0, dst.width, dst.height);
+
+        // Default source rectangle (entire source image)
+        let sx = 0, sy = 0, sw = src.width, sh = src.height;
+        // Default destination rectangle (entire target canvas)
+        let dx = 0, dy = 0, dw = dst.width, dh = dst.height;
+
+        switch (mode) {
+            case "Stretch":
+                // Defaults handle this: full source stretched to full target.
+                break;
+            case "ScaleAndCrop": {
+                // target filled completely, crop source to fit
+                // needs to crop the wider dimension
+                const wRatio = dst.width / src.width;
+                const hRatio = dst.height / src.height;
+                if (wRatio > hRatio) {
+                    sh = dst.height / wRatio;
+                    sy = (src.height - sh) / 2;
+                } else {
+                    sw = dst.width / hRatio;
+                    sx = (src.width - sw) / 2;
+                }
+                break;
+            }
+            case "ScaleAndPad": {
+                // full source, reduce target to keep aspect ratio
+                // needs to pad the narrower dimension
+                const wRatio = dst.width / src.width;
+                const hRatio = dst.height / src.height;
+                if (wRatio < hRatio) {
+                    dh = src.height * wRatio;
+                    dy = (dst.height - dh) / 2;
+                } else {
+                    dw = src.width * hRatio;
+                    dx = (dst.width - dw) / 2;
+                }
+                break;
+            }
+            case "NoScale":
+            default: {
+                // No scaling. Handle independent cropping or padding per axis.
+                if (src.width > dst.width) {
+                    // Crop Width: Source is wider than target
+                    sw = dst.width;
+                    sx = (src.width - dst.width) / 2;
+                } else {
+                    // Pad Width: Source is narrower than target
+                    dw = src.width;
+                    dx = (dst.width - src.width) / 2;
+                }
+
+                if (src.height > dst.height) {
+                    // Crop Height: Source is taller than target
+                    sh = dst.height;
+                    sy = (src.height - dst.height) / 2;
+                } else {
+                    // Pad Height: Source is shorter than target
+                    dh = src.height;
+                    dy = (dst.height - src.height) / 2;
+                }
+                break;
+            }
+        }
+
+        // Draw the calculated rectangle from source to destination
+        ctx.drawImage(src, sx, sy, sw, sh, dx, dy, dw, dh);
+
+        return dst;
+    }
+
     function saveImages() {
         const store = useGeneratorStore();
+        const optionsStore = useOptionsStore();
         if (!imageProps.value.imageLayer) return;
         if (!imageProps.value.drawLayer) return;
-        const cropX = imageProps.value.imageLayer.getCenter().left - (store.params.width as number / 2);
-        const cropWidth = store.params.width;
-        const cropY = imageProps.value.imageLayer.getCenter().top - (store.params.height as number / 2);
-        const cropHeight = store.params.height;
-        const dataUrlOptions = {
-            format: "jpeg",
-            quality: 1.0,
-            left: cropX,
-            top: cropY,
-            width: cropWidth,
-            height: cropHeight,
-        };
-        generatorImageProps.value.sourceImage = imageProps.value.imageLayer.toDataURL(dataUrlOptions);
-        generatorImageProps.value.maskImage = imageProps.value.redoHistory.length === 0 || drawing.value ? undefined : imageProps.value.drawLayer.toDataURL(dataUrlOptions).split(",")[1];
+
+        const targetWidth  = store.params.width as number;
+        const targetHeight = store.params.height as number;
+        const bgColor      = (imageProps.value.imageLayer.backgroundColor) || '#FFFFFF';
+        const resizeMode   = optionsStore.imageResizeMode;
+
+        const srcImageCanvas  = imageProps.value.imageLayer.toCanvasElement();
+        const destImageCanvas = applyTransform(srcImageCanvas, targetWidth, targetHeight, bgColor, resizeMode);
+
+        generatorImageProps.value.sourceImage = destImageCanvas.toDataURL('image/jpeg', 1.0);
+        generatorImageProps.value.maskImage   = undefined;
+
+        const includeMask = imageProps.value.redoHistory.length > 0 && !drawing.value;
+        if (includeMask) {
+            const srcMaskCanvas  = imageProps.value.drawLayer.toCanvasElement();
+            const destMaskCanvas = applyTransform(srcMaskCanvas, targetWidth, targetHeight, bgColor, resizeMode);
+
+            generatorImageProps.value.maskImage = destMaskCanvas.toDataURL('image/jpeg', 1.0).split(",")[1];
+        }
     }
 
     let timeout: undefined | NodeJS.Timeout;
