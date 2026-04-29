@@ -850,6 +850,8 @@ export const useGeneratorStore = defineStore("generator", () => {
         maxClipSkip,
         minFrames,
         maxFrames,
+        minEta,
+        maxEta,
         clipSkipList,
         cfgList,
         queue,
