@@ -18,6 +18,7 @@ function getDefaultStore() {
         width: 512,  // make sure these are divisible by 64
         height: 512, // make sure these are divisible by 64
         cfg_scale: 5,
+        eta: 1.0,
         clip_skip: 0,
         seed: -1,
         denoising_strength: 0.6,
@@ -74,6 +75,7 @@ interface IMultiSelect {
     scheduler: IMultiSelectItem<string>;
     guidance: IMultiSelectItem<number>;
     clipSkip: IMultiSelectItem<number>;
+    eta: IMultiSelectItem<number>;
 }
 
 interface CarouselOutput {
@@ -132,6 +134,13 @@ export const useGeneratorStore = defineStore("generator", () => {
             selected: [params.value.clip_skip],
             mapToParam: el => el.clip_skip,
         },
+        eta: {
+            name: "Eta",
+            state: "Disabled",
+            allowedStates: ["Disabled", "Enabled"],
+            selected: [params.value.eta],
+            mapToParam: el => el.eta,
+        },
     });
 
     const getDefaultImageProps = (): ITypeParams => ({
@@ -177,6 +186,8 @@ export const useGeneratorStore = defineStore("generator", () => {
     const maxSteps = computed(() => useOptionsStore().allowLargerParams === "Enabled" ? 150 : 50);
     const minCfgScale = ref(1);
     const maxCfgScale = ref(24);
+    const minEta = ref(0);
+    const maxEta = ref(1);
     const minDenoise = ref(0);
     const maxDenoise = ref(1);
     const minClipSkip = ref(0);
@@ -292,7 +303,7 @@ export const useGeneratorStore = defineStore("generator", () => {
             };
         });
 
-        const { seed, cfg_scale, steps, clip_skip, sampler_name, scheduler, n: batch_size,
+        const { seed, cfg_scale, eta, steps, clip_skip, sampler_name, scheduler, n: batch_size,
             ...currentParams } = params.value;
 
         // create list of seeds
@@ -311,6 +322,7 @@ export const useGeneratorStore = defineStore("generator", () => {
             promptVariant: processedPrompts,
             seed:          seeds,
             cfg_scale:     getMultiSelect(multiSelect.value.guidance,  cfg_scale),
+            eta:           getMultiSelect(multiSelect.value.eta,       eta),
             steps:         getMultiSelect(multiSelect.value.steps,     steps),
             clip_skip:     getMultiSelect(multiSelect.value.clipSkip,  clip_skip),
             sampler_name:  getMultiSelect(multiSelect.value.sampler,   sampler_name),
@@ -475,11 +487,11 @@ export const useGeneratorStore = defineStore("generator", () => {
                 if (image.info && typeof image.info === 'string' && image.info.trim() !== '') {
                     try {
                         const info = JSON.parse(image.info);
-                        const directFields = ['seed', 'steps', 'sampler_name', 'cfg_scale', 'width', 'height', 'clip_skip'];
+                        const directFields = ['seed', 'steps', 'sampler_name', 'cfg_scale', 'eta', 'width', 'height', 'clip_skip'];
                         directFields.forEach(field => {
-                            if (info[field] != null) {
+                            if (info[field] != undefined && info[field] != null) {
                                 params[field] = info[field];
-                            } else {
+                            } else if (image.params[field] != undefined) {
                                 params[field] = image.params[field];
                             }
                         });
@@ -572,6 +584,7 @@ export const useGeneratorStore = defineStore("generator", () => {
         }
         if (data.steps)           params.value.steps = validateParam("steps", data.steps, maxSteps.value, defaults.steps as number);
         if (data.cfg_scale)       params.value.cfg_scale = data.cfg_scale;
+        if (data.eta || data.eta === 0) params.value.eta = data.eta;
         if (data.width)           params.value.width = validateParam("width", data.width, maxDimensions.value, defaults.width as number);
         if (data.height)          params.value.height = validateParam("height", data.height, maxDimensions.value, defaults.height as number);
         if (data.seed)            params.value.seed = data.seed;
