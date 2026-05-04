@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useCanvasStore } from '@/stores/canvas';
-import { onMounted, ref } from 'vue';
+import { onMounted, onBeforeUnmount, ref } from 'vue';
 import { ElUpload, ElIcon, ElButton, ElForm, ElColorPicker, type UploadFile, type UploadRawFile } from 'element-plus';
 import { UploadFilled, Delete, Download, EditPen, Close, RefreshRight, RefreshLeft  } from '@element-plus/icons-vue';
 import { fabric } from 'fabric';
@@ -37,7 +37,35 @@ function removeImage() {
 onMounted(() => {
     canvasStore.createNewCanvas("canvas");
     store.currentImageProps.sourceImage && fabric.Image.fromURL(store.currentImageProps.sourceImage, canvasStore.newImage);
+    window.addEventListener('paste', handlePaste);
 })
+
+onBeforeUnmount(() => {
+    window.removeEventListener('paste', handlePaste);
+})
+
+async function handlePaste(event: ClipboardEvent) {
+    const items = event.clipboardData?.items;
+    if (!items) return;
+
+    for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.type.startsWith('image/')) {
+            event.preventDefault();
+            const file = item.getAsFile();
+            if (!file) return;
+            try {
+                const base64File = await convertToBase64(file);
+                store.currentImageProps.sourceImage = base64File;
+                canvasStore.drawing = false;
+                fabric.Image.fromURL(base64File, canvasStore.newImage);
+            } catch (error) {
+                console.error("Failed to process pasted image:", error);
+            }
+            return;
+        }
+    }
+}
 </script>
 
 <template>
@@ -51,7 +79,7 @@ onMounted(() => {
         v-if="!store.currentImageProps.sourceImage"
     >
         <el-icon :size="100"><upload-filled /></el-icon>
-        <div>Drop file here OR <em>click to upload</em></div>
+        <div>Drop file here, paste an image OR <em>click to upload</em></div>
         <template #tip>
             <div v-if="store.generatorType === 'Img2Img'">
                 <div class="center-horizontal" style="margin-top: 5px;">OR</div>
