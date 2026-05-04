@@ -44,8 +44,8 @@ onBeforeUnmount(() => {
     window.removeEventListener('paste', handlePaste);
 })
 
-async function handlePaste(event: ClipboardEvent) {
-    const items = event.clipboardData?.items;
+async function handlePaste(event: Event) {
+    const items = (event as ClipboardEvent).clipboardData?.items;
     if (!items) return;
 
     for (let i = 0; i < items.length; i++) {
@@ -56,9 +56,11 @@ async function handlePaste(event: ClipboardEvent) {
             if (!file) return;
             try {
                 const base64File = await convertToBase64(file);
-                store.currentImageProps.sourceImage = base64File;
-                canvasStore.drawing = false;
-                fabric.Image.fromURL(base64File, canvasStore.newImage);
+                if (typeof base64File === "string") {
+                    store.currentImageProps.sourceImage = base64File;
+                    canvasStore.drawing = false;
+                    fabric.Image.fromURL(base64File, canvasStore.newImage);
+                }
             } catch (error) {
                 console.error("Failed to process pasted image:", error);
             }
