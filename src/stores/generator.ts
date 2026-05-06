@@ -109,7 +109,7 @@ export const useGeneratorStore = defineStore("generator", () => {
         scheduler: {
             name: "Scheduler",
             state: "Enabled",
-            allowedStates: ["Disabled", "Enabled"],
+            allowedStates: ["Disabled", "Enabled", "Multiple"],
             selected: [params.value.scheduler],
             mapToParam: el => el.scheduler,
         },
