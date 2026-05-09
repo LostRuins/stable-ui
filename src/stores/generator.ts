@@ -109,7 +109,7 @@ export const useGeneratorStore = defineStore("generator", () => {
         scheduler: {
             name: "Scheduler",
             state: "Enabled",
-            allowedStates: ["Disabled", "Enabled"],
+            allowedStates: ["Disabled", "Enabled", "Multiple"],
             selected: [params.value.scheduler],
             mapToParam: el => el.scheduler,
         },
@@ -200,7 +200,7 @@ export const useGeneratorStore = defineStore("generator", () => {
     const cfgList =      ref(arrayRange(minCfgScale.value, maxCfgScale.value, 0.5));
 
     const totalImageCount = computed(() => {
-        const multiCalc = (before: number, multiParam: IMultiSelectItem<any>, defaultMultiplier = 1) => before * (multiParam.state === "Multiple" ? multiParam.selected.length : defaultMultiplier);
+        const multiCalc = (before: number, multiParam: IMultiSelectItem<any>, defaultMultiplier = 1) => before * (multiParam.state === "Multiple" && multiParam.selected.length > 0 ? multiParam.selected.length : defaultMultiplier);
         const imageCount = params.value.n;
         const promptMatrixCount  = imageCount * promptMatrix().length;
         const multiSamplerCount   = multiCalc(promptMatrixCount,   multiSelect.value.sampler);
