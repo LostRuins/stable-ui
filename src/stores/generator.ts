@@ -24,7 +24,7 @@ function getDefaultStore() {
         denoising_strength: 0.6,
         frames: 1,
         enable_hr: false,
-        send_as_refimg: false,
+        send_as_refimg: true,
         scheduler: "default",
     }
 }
@@ -352,10 +352,12 @@ export const useGeneratorStore = defineStore("generator", () => {
         const models = [ await updateAvailableModels() ];
         for (const combo of combinations) {
             const { promptVariant: { full_prompt, ...promptParams }, ...comboParams } = combo;
+            const sendAsRefimg = type === "Img2Img" ? currentParams.send_as_refimg : false;
             let newgen:any = {
                 prompt: full_prompt,
                 params: {
                     ...currentParams,
+                    send_as_refimg: sendAsRefimg,
                     ...comboParams,
                     ...promptParams,
                     init_images: sourceImage ? [ sourceImage.split(",")[1] ] : [],
