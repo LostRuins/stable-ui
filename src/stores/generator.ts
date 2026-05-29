@@ -194,7 +194,7 @@ export const useGeneratorStore = defineStore("generator", () => {
     const minClipSkip = ref(0);
     const maxClipSkip = ref(10);
     const minFrames = ref(1);
-    const maxFrames = ref(120);
+    const maxFrames = ref(160);
     const minFps = ref(16);
     const maxFps = ref(24);
 
