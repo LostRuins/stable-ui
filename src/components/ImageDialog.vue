@@ -107,6 +107,7 @@ function downloadAvi() {
             <span>Clip Skip: {{currentOutput.clip_skip ?? "Unknown"}} - </span>
             <span>Dimensions: {{currentOutput.width || "???"}}x{{currentOutput.height || "???"}} - </span>
             <span>Frames: {{currentOutput.frames || "1"}}</span>
+            <span v-if="currentOutput.frames && currentOutput.frames > 1"> - FPS: {{currentOutput.fps || "Unknown"}}</span>
             <span v-if="currentOutput.extra_avi"> - <a href="#" @click.prevent="downloadAvi" style="cursor: pointer; color: var(--el-color-primary);">[Download AVI]</a></span>
         </div>
         <template #footer>

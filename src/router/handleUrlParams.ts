@@ -49,6 +49,7 @@ const handleUrlParams = function() {
         width: Number(paramMap.get("width") || 512),
         clip_skip: Number(paramMap.get("clip_skip") || 0),
         frames: Number(paramMap.get("frames") || 1),
+        fps: Number(paramMap.get("fps") || 16),
         scheduler: paramMap.get("scheduler") || "default",
     }
 

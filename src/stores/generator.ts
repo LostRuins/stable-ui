@@ -23,6 +23,7 @@ function getDefaultStore() {
         seed: -1,
         denoising_strength: 0.6,
         frames: 1,
+        fps: 16,
         enable_hr: false,
         send_as_refimg: true,
         scheduler: "default",
@@ -194,6 +195,8 @@ export const useGeneratorStore = defineStore("generator", () => {
     const maxClipSkip = ref(10);
     const minFrames = ref(1);
     const maxFrames = ref(120);
+    const minFps = ref(16);
+    const maxFps = ref(24);
 
     const arrayRange = (start: number, end: number, step: number) => Array.from({length: (end - start + 1) / step}, (_, i) => (i + start) * step);
     const clipSkipList = ref(arrayRange(minClipSkip.value, maxClipSkip.value, 1));
@@ -379,9 +382,14 @@ export const useGeneratorStore = defineStore("generator", () => {
             {
                 delete newgen.params["scheduler"];
             }
-            if(newgen.params["frames"] && newgen.params["frames"]<=1)
+            if(!newgen.params["frames"] || newgen.params["frames"]<=1)
             {
                 delete newgen.params["frames"];
+                delete newgen.params["fps"];
+            }
+            else
+            {
+                newgen.params["fps"] = Math.min(maxFps.value, Math.max(minFps.value, Math.round(Number(newgen.params["fps"]) || getDefaultStore().fps)));
             }
             if(referenceBase64Images && referenceBase64Images.length>0)
             {
@@ -482,6 +490,7 @@ export const useGeneratorStore = defineStore("generator", () => {
                     prompt: image.prompt,
                     modelName: image.models[0],
                     frames: image.params.frames,
+                    fps: image.params.fps,
                     extra_avi: extra_avi,
                     enable_hr: image.params.enable_hr,
                     send_as_refimg: image.params.send_as_refimg,
@@ -489,7 +498,7 @@ export const useGeneratorStore = defineStore("generator", () => {
                 if (image.info && typeof image.info === 'string' && image.info.trim() !== '') {
                     try {
                         const info = JSON.parse(image.info);
-                        const directFields = ['seed', 'steps', 'sampler_name', 'cfg_scale', 'eta', 'width', 'height', 'clip_skip'];
+                        const directFields = ['seed', 'steps', 'sampler_name', 'cfg_scale', 'eta', 'width', 'height', 'clip_skip', 'fps'];
                         directFields.forEach(field => {
                             if (info[field] != undefined && info[field] != null) {
                                 params[field] = info[field];
@@ -593,6 +602,7 @@ export const useGeneratorStore = defineStore("generator", () => {
         if (data.clip_skip)       params.value.clip_skip = validateParam("clip_skip", data.clip_skip, maxClipSkip.value, defaults.clip_skip as number);
         if (data.scheduler)       params.value.scheduler = data.scheduler;
         if (data.frames)          params.value.frames = validateParam("frames", data.frames, maxFrames.value, defaults.frames as number);
+        if (data.fps)             params.value.fps = Math.min(maxFps.value, Math.max(minFps.value, Math.round(validateParam("fps", data.fps, maxFps.value, defaults.fps as number))));
     }
 
     /**
@@ -852,6 +862,8 @@ export const useGeneratorStore = defineStore("generator", () => {
         maxClipSkip,
         minFrames,
         maxFrames,
+        minFps,
+        maxFps,
         minEta,
         maxEta,
         clipSkipList,

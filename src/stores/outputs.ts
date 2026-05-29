@@ -25,6 +25,7 @@ export interface ImageData {
     starred?: 1 | 0;
     clip_skip?: number;
     frames?: number;
+    fps?: number;
     scheduler?: string;
     extra_avi?: string;
     enable_hr?: 1 | 0;

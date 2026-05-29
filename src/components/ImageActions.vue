@@ -69,6 +69,7 @@ async function copyLink(imageData: ImageData) {
         seed: imageData.seed,
         clip_skip: imageData.clip_skip,
         frames: imageData.frames,
+        fps: imageData.fps,
         scheduler: imageData.scheduler,
         extra_avi: imageData.extra_avi,
         enable_hr: imageData.enable_hr,
