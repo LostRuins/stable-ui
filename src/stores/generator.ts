@@ -194,9 +194,9 @@ export const useGeneratorStore = defineStore("generator", () => {
     const minClipSkip = ref(0);
     const maxClipSkip = ref(10);
     const minFrames = ref(1);
-    const maxFrames = ref(160);
+    const maxFrames = computed(() => useOptionsStore().allowLargerParams === "Enabled" ? 400 : 200);
     const minFps = ref(16);
-    const maxFps = ref(24);
+    const maxFps = computed(() => useOptionsStore().allowLargerParams === "Enabled" ? 32 : 24);
 
     const arrayRange = (start: number, end: number, step: number) => Array.from({length: (end - start + 1) / step}, (_, i) => (i + start) * step);
     const clipSkipList = ref(arrayRange(minClipSkip.value, maxClipSkip.value, 1));
