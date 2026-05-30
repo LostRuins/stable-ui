@@ -141,75 +141,71 @@ handleUrlParams();
             v-else
         >
             <div class="sidebar">
-                <el-collapse v-model="uiStore.activeCollapse" style="margin-bottom: 24px">
-                    <el-collapse-item title="Generation Options" name="1">
-                        <form-prompt-input />
-                        <form-input
-                            label="Negative Prompt"
-                            prop="negativePrompt"
-                            v-model="store.negativePrompt"
-                            :autosize="{ maxRows: 15 }"
-                            resize="vertical"
-                            type="textarea"
-                            placeholder="Enter negative prompt here"
-                            info="What to exclude from the image. Not working? Try increasing the guidance."
-                            label-position="top"
-                        >
-                        </form-input>
-                        <form-input label="Seed" prop="seed" v-model="store.params.seed" placeholder="Enter seed here" clearable :clear-icon="CloseBold">
-                            <template #append>
-                                <el-tooltip content="Randomize!" placement="top">
-                                    <el-button :icon="MagicStick" @click="() => store.params.seed = getNewSeed()" />
-                                </el-tooltip>
-                            </template>
-                        </form-input>
-                        <el-row :gutter="10" v-if="true">
-                            <el-col :span="isMobile ? 24 : 12" v-if="store.multiSelect.sampler.state === 'Multiple'">
-                                <form-select label="Sampler(s)"            prop="samplers"        v-model="store.multiSelect.sampler.selected"     :options="availableSamplers"  info="Multi-select enabled. Heun and DPM2 double generation time per step, but converge twice as fast." multiple />
-                            </el-col>
-                            <el-col :span="isMobile ? 24 : 12" v-if="store.multiSelect.sampler.state === 'Enabled'">
-                                <form-select label="Sampler"               prop="sampler"         v-model="store.params.sampler_name"              :options="availableSamplers"  info="Heun and DPM2 double generation time per step, but converge twice as fast." />
-                            </el-col>
-                            <el-col :span="isMobile ? 24 : 12" v-if="store.multiSelect.scheduler.state === 'Multiple'">
-                                <form-select label="Scheduler(s)"         prop="schedulers"      v-model="store.multiSelect.scheduler.selected"    :options="availableSchedulers" info="Multi-select enabled. Experimental! KoboldCpp only, allows you to use a different scheduler. Leave as default otherwise." multiple />
-                            </el-col>
-                            <el-col :span="isMobile ? 24 : 12" v-if="store.multiSelect.scheduler.state === 'Enabled'">
-                                <form-select label="Scheduler"             prop="scheduler"       v-model="store.params.scheduler"            :options="availableSchedulers" info="Experimental! KoboldCpp only, allows you to use a different scheduler. Leave as default otherwise." />
-                            </el-col>
-                        </el-row>
-                        <form-slider label="Batch Size"            prop="batchSize"       v-model="store.params.n"                         :min="store.minImages"        :max="store.maxImages" />
-                        <form-slider label="Steps(s)"              prop="multiSteps"      v-model="store.multiSelect.steps.selected"       :min="store.minSteps"         :max="store.maxSteps"      info="Multi-select enabled. Keep step count between 30 to 50 for optimal generation times. Coherence typically peaks between 60 and 90 steps, with a trade-off in speed." multiple v-if="store.multiSelect.steps.state === 'Multiple'" />
-                        <form-slider label="Steps"                 prop="steps"           v-model="store.params.steps"                     :min="store.minSteps"         :max="store.maxSteps"      info="Keep step count between 30 to 50 for optimal generation times. Coherence typically peaks between 60 and 90 steps, with a trade-off in speed." v-else-if="store.multiSelect.steps.state === 'Enabled'" />
-                        <form-slider label="Width"                 prop="width"           v-model="store.params.width"                     :min="store.minDimensions"    :max="store.maxDimensions" :step="64"   :change="onDimensionsChange" />
-                        <form-slider label="Height"                prop="height"          v-model="store.params.height"                    :min="store.minDimensions"    :max="store.maxDimensions" :step="64"   :change="onDimensionsChange" />
-                        <form-slider label="Guidance(s)"           prop="cfgScales"       v-model="store.multiSelect.guidance.selected"    :min="store.minCfgScale"      :max="store.maxCfgScale"   info="Multi-select enabled. Higher values will make the AI respect your prompt more. Lower values allow the AI to be more creative." multiple v-if="store.multiSelect.guidance.state === 'Multiple'" />
-                        <form-slider label="Guidance"              prop="cfgScale"        v-model="store.params.cfg_scale"                 :min="store.minCfgScale"      :max="store.maxCfgScale"   :step="0.5"  info="Higher values will make the AI respect your prompt more. Lower values allow the AI to be more creative." v-else-if="store.multiSelect.guidance.state === 'Enabled'" />
-                        <form-slider label="Eta"                   prop="eta"             v-model="store.params.eta"                       :min="store.minEta"           :max="store.maxEta"        :step="0.1"  info="Noise multiplier for ancestral samplers. 0 disables noise injection." v-if="store.multiSelect.eta.state === 'Enabled'" />
-                        <form-slider label="CLIP Skip(s)"          prop="clipSkips"       v-model="store.multiSelect.clipSkip.selected"    :min="store.minClipSkip"      :max="store.maxClipSkip"   info="Multi-select enabled. Last layers of CLIP to ignore. For most situations this can be left alone." multiple v-if="store.multiSelect.clipSkip.state === 'Multiple'" />
-                        <form-slider label="CLIP Skip"             prop="clipSkip"        v-model="store.params.clip_skip"                 :min="store.minClipSkip"      :max="store.maxClipSkip"   info="Last layers of CLIP to ignore. For most situations this can be left alone." v-else-if="store.multiSelect.clipSkip.state === 'Enabled'" />
-                        <form-slider label="Init Strength"         prop="denoise"         v-model="store.params.denoising_strength"        :min="store.minDenoise"       :max="store.maxDenoise"    :step="0.01" info="The final image will diverge from the starting image at higher values. 0=unchanged, 1=fullychanged" v-if="store.sourceGeneratorTypes.includes(store.generatorType)" />
-                        <form-slider label="Video Frames"          prop="frames"          v-model="store.params.frames"                    :min="store.minFrames"        :max="store.maxFrames"     info="Number of consecutive video frames to generate (Video models only). More frames increases memory usage."/>
-                        <form-slider label="FPS"                   prop="fps"             v-model="store.params.fps"                       :min="store.minFps"           :max="store.maxFps"        :disabled="store.params.frames <= 1" info="Frames per second for video generation." v-if="store.params.frames > 1" />
-                        <div>
-                        <span style="height: 100%;font-size: 14px;">Reference Image: <br>(Photomaker/Kontext) </span>
-                        <input class="el-button"
-                        type="file"
-                        id="extra_image_input"
-                        @change="store.setExtraImage($event)"
-                        accept="image/*" multiple
-                        />
-                        <button @click="store.clearExtraImage()" class="el-button">Clear Image</button>
-                        <el-row>
-                            <el-col :span="isMobile ? 24 : 12">
-                                <form-switch label="ESRGAN Upscale"    prop="enable_hr"   v-model="store.params.enable_hr"    info="Enable upscale with ESRGAN." />
-                            </el-col>
-                            <el-col :span="isMobile ? 24 : 12">
-                                <form-switch label="Send as RefImg"    prop="send_as_refimg"   v-model="store.params.send_as_refimg"  v-if="store.generatorType === 'Img2Img'"  info="Instead of regular Img2Img, send the image as a reference image for edit models." />
-                            </el-col>
-                        </el-row>
-                        </div>
-                    </el-collapse-item>
-                </el-collapse>
+                <form-prompt-input />
+                <form-input
+                    label="Negative Prompt"
+                    prop="negativePrompt"
+                    v-model="store.negativePrompt"
+                    :autosize="{ maxRows: 15 }"
+                    resize="vertical"
+                    type="textarea"
+                    placeholder="Enter negative prompt here"
+                    info="What to exclude from the image. Not working? Try increasing the guidance."
+                    label-position="top"
+                >
+                </form-input>
+                <form-input label="Seed" prop="seed" v-model="store.params.seed" placeholder="Enter seed here" clearable :clear-icon="CloseBold">
+                    <template #append>
+                        <el-tooltip content="Randomize!" placement="top">
+                            <el-button :icon="MagicStick" @click="() => store.params.seed = getNewSeed()" />
+                        </el-tooltip>
+                    </template>
+                </form-input>
+                <el-row :gutter="10" v-if="true">
+                    <el-col :span="isMobile ? 24 : 12" v-if="store.multiSelect.sampler.state === 'Multiple'">
+                        <form-select label="Sampler(s)"            prop="samplers"        v-model="store.multiSelect.sampler.selected"     :options="availableSamplers"  info="Multi-select enabled. Heun and DPM2 double generation time per step, but converge twice as fast." multiple />
+                    </el-col>
+                    <el-col :span="isMobile ? 24 : 12" v-if="store.multiSelect.sampler.state === 'Enabled'">
+                        <form-select label="Sampler"               prop="sampler"         v-model="store.params.sampler_name"              :options="availableSamplers"  info="Heun and DPM2 double generation time per step, but converge twice as fast." />
+                    </el-col>
+                    <el-col :span="isMobile ? 24 : 12" v-if="store.multiSelect.scheduler.state === 'Multiple'">
+                        <form-select label="Scheduler(s)"         prop="schedulers"      v-model="store.multiSelect.scheduler.selected"    :options="availableSchedulers" info="Multi-select enabled. Experimental! KoboldCpp only, allows you to use a different scheduler. Leave as default otherwise." multiple />
+                    </el-col>
+                    <el-col :span="isMobile ? 24 : 12" v-if="store.multiSelect.scheduler.state === 'Enabled'">
+                        <form-select label="Scheduler"             prop="scheduler"       v-model="store.params.scheduler"            :options="availableSchedulers" info="Experimental! KoboldCpp only, allows you to use a different scheduler. Leave as default otherwise." />
+                    </el-col>
+                </el-row>
+                <form-slider label="Batch Size"            prop="batchSize"       v-model="store.params.n"                         :min="store.minImages"        :max="store.maxImages" />
+                <form-slider label="Steps(s)"              prop="multiSteps"      v-model="store.multiSelect.steps.selected"       :min="store.minSteps"         :max="store.maxSteps"      info="Multi-select enabled. Keep step count between 30 to 50 for optimal generation times. Coherence typically peaks between 60 and 90 steps, with a trade-off in speed." multiple v-if="store.multiSelect.steps.state === 'Multiple'" />
+                <form-slider label="Steps"                 prop="steps"           v-model="store.params.steps"                     :min="store.minSteps"         :max="store.maxSteps"      info="Keep step count between 30 to 50 for optimal generation times. Coherence typically peaks between 60 and 90 steps, with a trade-off in speed." v-else-if="store.multiSelect.steps.state === 'Enabled'" />
+                <form-slider label="Width"                 prop="width"           v-model="store.params.width"                     :min="store.minDimensions"    :max="store.maxDimensions" :step="64"   :change="onDimensionsChange" />
+                <form-slider label="Height"                prop="height"          v-model="store.params.height"                    :min="store.minDimensions"    :max="store.maxDimensions" :step="64"   :change="onDimensionsChange" />
+                <form-slider label="Guidance(s)"           prop="cfgScales"       v-model="store.multiSelect.guidance.selected"    :min="store.minCfgScale"      :max="store.maxCfgScale"   info="Multi-select enabled. Higher values will make the AI respect your prompt more. Lower values allow the AI to be more creative." multiple v-if="store.multiSelect.guidance.state === 'Multiple'" />
+                <form-slider label="Guidance"              prop="cfgScale"        v-model="store.params.cfg_scale"                 :min="store.minCfgScale"      :max="store.maxCfgScale"   :step="0.5"  info="Higher values will make the AI respect your prompt more. Lower values allow the AI to be more creative." v-else-if="store.multiSelect.guidance.state === 'Enabled'" />
+                <form-slider label="Eta"                   prop="eta"             v-model="store.params.eta"                       :min="store.minEta"           :max="store.maxEta"        :step="0.1"  info="Noise multiplier for ancestral samplers. 0 disables noise injection." v-if="store.multiSelect.eta.state === 'Enabled'" />
+                <form-slider label="CLIP Skip(s)"          prop="clipSkips"       v-model="store.multiSelect.clipSkip.selected"    :min="store.minClipSkip"      :max="store.maxClipSkip"   info="Multi-select enabled. Last layers of CLIP to ignore. For most situations this can be left alone." multiple v-if="store.multiSelect.clipSkip.state === 'Multiple'" />
+                <form-slider label="CLIP Skip"             prop="clipSkip"        v-model="store.params.clip_skip"                 :min="store.minClipSkip"      :max="store.maxClipSkip"   info="Last layers of CLIP to ignore. For most situations this can be left alone." v-else-if="store.multiSelect.clipSkip.state === 'Enabled'" />
+                <form-slider label="Init Strength"         prop="denoise"         v-model="store.params.denoising_strength"        :min="store.minDenoise"       :max="store.maxDenoise"    :step="0.01" info="The final image will diverge from the starting image at higher values. 0=unchanged, 1=fullychanged" v-if="store.sourceGeneratorTypes.includes(store.generatorType)" />
+                <form-slider label="Video Frames"          prop="frames"          v-model="store.params.frames"                    :min="store.minFrames"        :max="store.maxFrames"     info="Number of consecutive video frames to generate (Video models only). More frames increases memory usage."/>
+                <form-slider label="FPS"                   prop="fps"             v-model="store.params.fps"                       :min="store.minFps"           :max="store.maxFps"        :disabled="store.params.frames <= 1" info="Frames per second for video generation." v-if="store.params.frames > 1" />
+                <div>
+                <span style="height: 100%;font-size: 14px;">Reference Image: <br>(Photomaker/Kontext) </span>
+                <input class="el-button"
+                type="file"
+                id="extra_image_input"
+                @change="store.setExtraImage($event)"
+                accept="image/*" multiple
+                />
+                <button @click="store.clearExtraImage()" class="el-button">Clear Image</button>
+                <el-row>
+                    <el-col :span="isMobile ? 24 : 12">
+                        <form-switch label="ESRGAN Upscale"    prop="enable_hr"   v-model="store.params.enable_hr"    info="Enable upscale with ESRGAN." />
+                    </el-col>
+                    <el-col :span="isMobile ? 24 : 12">
+                        <form-switch label="Send as RefImg"    prop="send_as_refimg"   v-model="store.params.send_as_refimg"  v-if="store.generatorType === 'Img2Img'"  info="Instead of regular Img2Img, send the image as a reference image for edit models." />
+                    </el-col>
+                </el-row>
+                </div>
             </div>
             <div class="main">
                 <el-button @click="() => {store.cancelled=true;store.generating=false;store.resetStore();}" class="reset-btn">Reset</el-button>
