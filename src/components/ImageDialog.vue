@@ -91,7 +91,7 @@ function downloadAvi() {
                 />
             </div>
         </div>
-        <div style="font-size: 18px; font-weight: 500;">{{currentOutput.prompt?.split("###")[0] || 'Unknown Creation'}}</div>
+        <div style="font-size: 16px; font-weight: 500;">{{currentOutput.prompt?.split("###")[0] || 'Unknown Creation'}}</div>
         <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; letter-spacing: 0.025em;">
             <div>Negative Prompt: {{currentOutput.prompt?.split("###")[1] || "None"}}</div>
             <span>Model: {{currentOutput.modelName || "Unknown"}} - </span>
@@ -127,15 +127,16 @@ function downloadAvi() {
 }
 
 .main-output {
-    width: 100%;
-    height: 512px;
-    max-height: 100%;
+    /* width: 100%; */
+    /* height: 512px; */
+    /* max-height: 100%; */
+    max-height: 54vh;
 }
 
 .image-viewer {
     width: 100%;
     max-width: 1024px;
-    height: 72vh;
+    height: 82vh;
     display: flex;
     flex-direction: column;
 }
@@ -148,7 +149,7 @@ function downloadAvi() {
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    gap: 10px;
+    gap: 8px;
     text-align: center;
     word-break: keep-all;
     overflow-y: scroll;
@@ -173,12 +174,12 @@ function downloadAvi() {
 @media only screen and (max-width: 768px) {
     .image-viewer {
         width: 100%;
-        height: 80vh;
+        height: 82vh;
     }
 
-    .main-output {
+    /* .main-output {
         width: 100%;
         height: 40vh;
-    }
+    } */
 }
 </style>

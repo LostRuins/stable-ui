@@ -356,7 +356,7 @@ handleUrlParams();
         height: 110vh;
         grid-template-rows: minmax(400px, 45vh) 65px 60%;
         grid-template-columns: 100%;
-        gap: 10px;
+        gap: 8px;
         grid-template-areas:
             "image"
             "main"

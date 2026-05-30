@@ -119,7 +119,7 @@ async function handlePaste(event: Event) {
     display: flex;
     flex-direction: column;
     position: absolute;
-    gap: 10px;
+    gap: 8px;
     top: 10px;
     right: 10px;
 }
