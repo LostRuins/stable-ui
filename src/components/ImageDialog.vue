@@ -9,6 +9,7 @@ import { useUIStore } from '@/stores/ui';
 import { useOutputStore } from '@/stores/outputs';
 import { db } from '@/utils/db';
 import { useGeneratorStore } from '@/stores/generator';
+import { downloadImage, downloadVideo } from '@/utils/download';
 
 const store = useOutputStore();
 const uiStore = useUIStore();
@@ -53,32 +54,18 @@ function extendVideo()
     gstore.generateImg2Img(finalframe);
 }
 
+function downloadGif() {
+    if (!currentOutput.value?.image) return;
+    downloadImage(currentOutput.value.image, `${currentOutput.value.seed}-${currentOutput.value.prompt}`);
+}
+
 function downloadAvi() {
     if (!currentOutput.value?.extra_avi) return;
-
     // extra_avi format: data:video/avi;base64,AAAA...
     const base64 = currentOutput.value.extra_avi.split(',')[1];
     if (!base64) return;
-
-    const binary = atob(base64);
-    const len = binary.length;
-    const bytes = new Uint8Array(len);
-
-    for (let i = 0; i < len; i++) {
-        bytes[i] = binary.charCodeAt(i);
-    }
-
-    const blob = new Blob([bytes], { type: 'video/avi' });
-    const url = URL.createObjectURL(blob);
-
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `output-${currentOutput.value.id ?? 'video'}.avi`;
-    document.body.appendChild(a);
-    a.click();
-
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const filename = `output-${currentOutput.value.id ?? 'video'}.avi`;
+    downloadVideo(base64,filename);
 }
 </script>
 
@@ -117,8 +104,12 @@ function downloadAvi() {
             <span>Dimensions: {{currentOutput.width || "???"}}x{{currentOutput.height || "???"}} - </span>
             <span>Frames: {{currentOutput.frames || "1"}}</span>
             <span v-if="currentOutput.frames && currentOutput.frames > 1"> - FPS: {{currentOutput.fps || "Unknown"}}</span>
+            <br/>
+            <b>
+            <span v-if="currentOutput.frames && currentOutput.frames > 1"> <a href="#" @click.prevent="downloadGif" style="cursor: pointer; color: var(--el-color-primary);">[Download GIF]</a></span>
             <span v-if="currentOutput.extra_avi"> - <a href="#" @click.prevent="downloadAvi" style="cursor: pointer; color: var(--el-color-primary);">[Download AVI]</a></span>
             <span v-if="currentOutput.final_frame"> - <a href="#" @click.prevent="extendVideo" style="cursor: pointer; color: var(--el-color-primary);">[Extend Video]</a></span>
+            </b>
         </div>
         <template #footer>
             <ImageActions

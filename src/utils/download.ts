@@ -101,3 +101,30 @@ export async function downloadImage(base64Data: string, fileName: string) {
 
     if (blob) URL.revokeObjectURL(downloadLink.href);
 }
+
+export function downloadVideo(base64Data: string, fileName: string) {
+
+    // extra_avi format: data:video/avi;base64,AAAA...
+    const base64 = base64Data;
+    if (!base64) return;
+
+    const binary = atob(base64);
+    const len = binary.length;
+    const bytes = new Uint8Array(len);
+
+    for (let i = 0; i < len; i++) {
+        bytes[i] = binary.charCodeAt(i);
+    }
+
+    const blob = new Blob([bytes], { type: 'video/avi' });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}

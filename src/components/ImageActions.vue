@@ -16,7 +16,7 @@ import {
     ElDialog,
 } from 'element-plus';
 import { deflateRaw } from 'pako';
-import { downloadImage } from '@/utils/download'
+import { downloadImage, downloadVideo } from '@/utils/download'
 import { db } from '@/utils/db';
 import { ref } from 'vue';
 import { useUIStore } from "@/stores/ui";
@@ -48,6 +48,21 @@ const confirmDelete = () => {
                 message: 'Deleted Image',
             })
         })
+}
+
+const downloadImageButton = (imageData: ImageData) => {
+    if (imageData.extra_avi)
+    {
+        //its a video with avi
+        // extra_avi format: data:video/avi;base64,AAAA...
+        const base64 = imageData.extra_avi.split(',')[1];
+        if (!base64) return;
+        const filename = `${imageData.seed}-${imageData.prompt}.avi`;
+        downloadVideo(base64,filename);
+        return;
+    } else {
+        downloadImage(imageData.image, `${imageData.seed}-${imageData.prompt}`);
+    }
 }
 
 const dismissImage = () => {
@@ -108,7 +123,7 @@ async function copyLink(imageData: ImageData) {
 
 <template>
     <el-button class="compact-button" @click="confirmDelete" type="danger" size="small" :icon="Delete" plain>Delete</el-button>
-    <el-button class="compact-button" @click="downloadImage(imageData.image, `${imageData.seed}-${imageData.prompt}`)" type="success" size="small" :icon="Download" plain>Download</el-button>
+    <el-button class="compact-button" @click="downloadImageButton(imageData)" type="success" size="small" :icon="Download" plain>Download</el-button>
     <el-button class="compact-button" v-if="!imageData.starred" @click="outputStore.toggleStarred(imageData.id)" type="warning" size="small" :icon="Star" plain>Star</el-button>
     <el-button class="compact-button" v-if="imageData.starred" @click="outputStore.toggleStarred(imageData.id)" type="warning" size="small" :icon="StarFilled" plain>Unstar</el-button>
     <el-button class="compact-button" @click="store.generateText2Img(imageData)" type="success" size="small" plain>Txt2img</el-button>
