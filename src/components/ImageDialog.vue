@@ -45,13 +45,12 @@ function handleClose() {
     modalOpen.value = false;
 }
 
-function extendVideo(image: string | undefined)
+function extendVideo()
 {
-    if(image)
-    {
-        const gstore = useGeneratorStore();
-        gstore.generateImg2Img(image);
-    }
+    if (!currentOutput.value?.final_frame) return;
+    const finalframe = currentOutput.value.final_frame;
+    const gstore = useGeneratorStore();
+    gstore.generateImg2Img(finalframe);
 }
 
 function downloadAvi() {
@@ -119,7 +118,7 @@ function downloadAvi() {
             <span>Frames: {{currentOutput.frames || "1"}}</span>
             <span v-if="currentOutput.frames && currentOutput.frames > 1"> - FPS: {{currentOutput.fps || "Unknown"}}</span>
             <span v-if="currentOutput.extra_avi"> - <a href="#" @click.prevent="downloadAvi" style="cursor: pointer; color: var(--el-color-primary);">[Download AVI]</a></span>
-            <span v-if="currentOutput.final_frame"> - <a href="#" @click.prevent="extendVideo(currentOutput.final_frame)" style="cursor: pointer; color: var(--el-color-primary);">[Extend Video]</a></span>
+            <span v-if="currentOutput.final_frame"> - <a href="#" @click.prevent="extendVideo" style="cursor: pointer; color: var(--el-color-primary);">[Extend Video]</a></span>
         </div>
         <template #footer>
             <ImageActions
