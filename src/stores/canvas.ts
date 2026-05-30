@@ -34,7 +34,7 @@ export const useCanvasStore = defineStore("canvas", () => {
         imageScale: 1,
         undoHistory: [],
         redoHistory: [],
-        drawing: false, 
+        drawing: false,
     })
 
     const inpainting = ref<ICanvasParams>({
@@ -53,7 +53,7 @@ export const useCanvasStore = defineStore("canvas", () => {
         const store = useGeneratorStore();
         return store.generatorType === "Inpainting";
     })
-    
+
     const imageProps = computed(() => usingInpainting.value ? inpainting.value : img2img.value);
     const generatorImageProps = computed(() => useGeneratorStore().currentImageProps);
 
@@ -111,7 +111,7 @@ export const useCanvasStore = defineStore("canvas", () => {
     }
 
     async function pathCreate({history, erase = false, draw = false}: pathCreateOptions = {}) {
-        if (!history) return; 
+        if (!history) return;
         if (!imageProps.value.drawLayer) return;
         if (!imageProps.value.visibleDrawLayer) return;
         if (!imageProps.value.imageLayer) return;
@@ -165,12 +165,12 @@ export const useCanvasStore = defineStore("canvas", () => {
         imageProps.value.undoHistory.push(path);
         if (drawing.value) {
             imageProps.value.imageLayer.remove(path.drawPath as fabric.Path);
-            imageProps.value.visibleImageLayer.remove(path.visibleDrawPath as fabric.Path);  
+            imageProps.value.visibleImageLayer.remove(path.visibleDrawPath as fabric.Path);
         } else {
             imageProps.value.drawLayer.remove(path.drawPath as fabric.Path);
-            imageProps.value.visibleDrawLayer.remove(path.visibleDrawPath as fabric.Path);  
+            imageProps.value.visibleDrawLayer.remove(path.visibleDrawPath as fabric.Path);
         }
-        delete path.drawPath; 
+        delete path.drawPath;
         delete path.visibleDrawPath;
         updateCanvas();
     }
@@ -244,7 +244,7 @@ export const useCanvasStore = defineStore("canvas", () => {
             imageProps.value.canvas.setWidth(width.value);
             imageProps.value.canvas.setHeight(height.value);
             imageProps.value.canvas.isDrawingMode = true;
-    
+
             imageProps.value.visibleDrawLayer = makeNewLayer();
             imageProps.value.visibleImageLayer = makeNewLayer({image:clonedImage});
             imageProps.value.drawLayer = makeInvisibleLayer();
@@ -270,9 +270,14 @@ export const useCanvasStore = defineStore("canvas", () => {
         targetWidth: number,
         targetHeight: number,
         bgColor: any,
-        mode: string
+        mode: string,
+        reference?: HTMLCanvasElement
     ): HTMLCanvasElement {
-        if (mode === "Original" || (src.width === targetWidth && src.height === targetHeight)) {
+        // use reference dimensions for crop/pad math if provided (keeps mask aligned to image)
+        const refWidth  = reference ? reference.width  : src.width;
+        const refHeight = reference ? reference.height : src.height;
+
+        if (mode === "Original") {
             return src;
         }
 
@@ -294,10 +299,8 @@ export const useCanvasStore = defineStore("canvas", () => {
                 // Defaults handle this: full source stretched to full target.
                 break;
             case "ScaleAndCrop": {
-                // target filled completely, crop source to fit
-                // needs to crop the wider dimension
-                const wRatio = dst.width / src.width;
-                const hRatio = dst.height / src.height;
+                const wRatio = dst.width / refWidth;
+                const hRatio = dst.height / refHeight;
                 if (wRatio > hRatio) {
                     sh = dst.height / wRatio;
                     sy = (src.height - sh) / 2;
@@ -308,15 +311,13 @@ export const useCanvasStore = defineStore("canvas", () => {
                 break;
             }
             case "ScaleAndPad": {
-                // full source, reduce target to keep aspect ratio
-                // needs to pad the narrower dimension
-                const wRatio = dst.width / src.width;
-                const hRatio = dst.height / src.height;
+                const wRatio = dst.width / refWidth;
+                const hRatio = dst.height / refHeight;
                 if (wRatio < hRatio) {
-                    dh = src.height * wRatio;
+                    dh = refHeight * wRatio;
                     dy = (dst.height - dh) / 2;
                 } else {
-                    dw = src.width * hRatio;
+                    dw = refWidth * hRatio;
                     dx = (dst.width - dw) / 2;
                 }
                 break;
@@ -324,24 +325,23 @@ export const useCanvasStore = defineStore("canvas", () => {
             case "NoScale":
             default: {
                 // No scaling. Handle independent cropping or padding per axis.
-                if (src.width > dst.width) {
-                    // Crop Width: Source is wider than target
-                    sw = dst.width;
-                    sx = (src.width - dst.width) / 2;
+                const anchorX = refWidth  / 2;
+                const anchorY = refHeight / 2;
+
+                if (refWidth > targetWidth) {
+                    sw = targetWidth;
+                    sx = anchorX - targetWidth / 2;
                 } else {
-                    // Pad Width: Source is narrower than target
-                    dw = src.width;
-                    dx = (dst.width - src.width) / 2;
+                    dw = refWidth;
+                    dx = targetWidth / 2 - anchorX;
                 }
 
-                if (src.height > dst.height) {
-                    // Crop Height: Source is taller than target
-                    sh = dst.height;
-                    sy = (src.height - dst.height) / 2;
+                if (refHeight > targetHeight) {
+                    sh = targetHeight;
+                    sy = anchorY - targetHeight / 2;
                 } else {
-                    // Pad Height: Source is shorter than target
-                    dh = src.height;
-                    dy = (dst.height - src.height) / 2;
+                    dh = refHeight;
+                    dy = targetHeight / 2 - anchorY;
                 }
                 break;
             }
@@ -365,7 +365,9 @@ export const useCanvasStore = defineStore("canvas", () => {
         const resizeMode   = optionsStore.imageResizeMode;
 
         const srcImageCanvas  = imageProps.value.imageLayer.toCanvasElement();
-        const destImageCanvas = applyTransform(srcImageCanvas, targetWidth, targetHeight, bgColor, resizeMode);
+        // const center = imageProps.value.imageLayer.getCenter();
+
+        const destImageCanvas = applyTransform(srcImageCanvas, targetWidth, targetHeight, bgColor, resizeMode, srcImageCanvas);
 
         generatorImageProps.value.sourceImage = destImageCanvas.toDataURL('image/jpeg', 1.0);
         generatorImageProps.value.maskImage   = undefined;
@@ -373,7 +375,7 @@ export const useCanvasStore = defineStore("canvas", () => {
         const includeMask = imageProps.value.redoHistory.length > 0 && !drawing.value;
         if (includeMask) {
             const srcMaskCanvas  = imageProps.value.drawLayer.toCanvasElement();
-            const destMaskCanvas = applyTransform(srcMaskCanvas, targetWidth, targetHeight, bgColor, resizeMode);
+            const destMaskCanvas = applyTransform(srcMaskCanvas, targetWidth, targetHeight, bgColor, resizeMode, srcImageCanvas);
 
             generatorImageProps.value.maskImage = destMaskCanvas.toDataURL('image/jpeg', 1.0).split(",")[1];
         }
