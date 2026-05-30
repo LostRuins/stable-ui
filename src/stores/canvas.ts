@@ -223,15 +223,12 @@ export const useCanvasStore = defineStore("canvas", () => {
         }
 
         const visibleDimensions = 512;
+        const sourceLayerWidth = width.value;
+        const sourceLayerHeight = height.value;
+        imageProps.value.imageScale = Math.max(sourceLayerWidth, sourceLayerHeight) / visibleDimensions;
 
         image.cloneAsImage((clonedImage: fabric.Image) => {
-            // Scaling relative to the downsized visible image layer
-            if (width.value > height.value) {
-                imageProps.value.imageScale = width.value / visibleDimensions;
-            } else {
-                imageProps.value.imageScale = height.value / visibleDimensions;
-            }
-            imageProps.value.imageLayer = makeInvisibleLayer({image: clonedImage, layerHeight: clonedImage.height, layerWidth: clonedImage.width});
+            imageProps.value.imageLayer = makeInvisibleLayer({image: clonedImage, layerHeight: sourceLayerHeight, layerWidth: sourceLayerWidth});
         })
 
         image.cloneAsImage((clonedImage: fabric.Image) => {
@@ -247,7 +244,7 @@ export const useCanvasStore = defineStore("canvas", () => {
 
             imageProps.value.visibleDrawLayer = makeNewLayer();
             imageProps.value.visibleImageLayer = makeNewLayer({image:clonedImage});
-            imageProps.value.drawLayer = makeInvisibleLayer();
+            imageProps.value.drawLayer = makeInvisibleLayer({layerHeight: sourceLayerHeight, layerWidth: sourceLayerWidth});
             const scaledWidth = width.value * imageProps.value.imageScale;
             const scaledHeight = height.value * imageProps.value.imageScale;
             store.params.width = scaledWidth - (scaledWidth % 64);
@@ -436,6 +433,14 @@ export const useCanvasStore = defineStore("canvas", () => {
         return newLayer;
     }
 
+    function imageLayerDimensions(): ILayerParams {
+        if (!imageProps.value.imageLayer) return {};
+        return {
+            layerHeight: imageProps.value.imageLayer.getHeight(),
+            layerWidth: imageProps.value.imageLayer.getWidth(),
+        };
+    }
+
     function makeNewLayer({image, layerWidth, layerHeight, fill, abosolute}: ILayerParams = {}) {
         const newLayer = image || new fabric.Rect({
             width: layerWidth || width.value,
@@ -486,7 +491,7 @@ export const useCanvasStore = defineStore("canvas", () => {
         imageProps.value.redoHistory = [];
         imageProps.value.undoHistory = [];
         imageProps.value.visibleDrawLayer = makeNewLayer();
-        imageProps.value.drawLayer = makeInvisibleLayer();
+        imageProps.value.drawLayer = makeInvisibleLayer(imageLayerDimensions());
         imageProps.value.visibleDrawLayer.set("opacity", 0.8)
         imageProps.value.canvas.add(imageProps.value.visibleDrawLayer);
     }
