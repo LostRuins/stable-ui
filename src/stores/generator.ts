@@ -483,6 +483,7 @@ export const useGeneratorStore = defineStore("generator", () => {
                 const animated = image.animated?true:false;
                 const mime = (animated?'gif':'png');
                 const extra_avi = (image.extra_data?(`data:video/avi;base64,${image.extra_data}`):"");
+                const final_frame = (image.final_frame?`${image.final_frame}`:"");
                 let params: any = {
                     // The database automatically increments IDs for us
                     id: -1,
@@ -492,6 +493,7 @@ export const useGeneratorStore = defineStore("generator", () => {
                     frames: image.params.frames,
                     fps: image.params.fps,
                     extra_avi: extra_avi,
+                    final_frame: final_frame,
                     enable_hr: image.params.enable_hr,
                     send_as_refimg: image.params.send_as_refimg,
                 }

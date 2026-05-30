@@ -8,6 +8,7 @@ import { computed, ref, watch } from 'vue';
 import { useUIStore } from '@/stores/ui';
 import { useOutputStore } from '@/stores/outputs';
 import { db } from '@/utils/db';
+import { useGeneratorStore } from '@/stores/generator';
 
 const store = useOutputStore();
 const uiStore = useUIStore();
@@ -42,6 +43,12 @@ watch(
 
 function handleClose() {
     modalOpen.value = false;
+}
+
+function extendVideo(image: string)
+{
+    const gstore = useGeneratorStore();
+    gstore.generateImg2Img(image)
 }
 
 function downloadAvi() {
@@ -109,9 +116,10 @@ function downloadAvi() {
             <span>Frames: {{currentOutput.frames || "1"}}</span>
             <span v-if="currentOutput.frames && currentOutput.frames > 1"> - FPS: {{currentOutput.fps || "Unknown"}}</span>
             <span v-if="currentOutput.extra_avi"> - <a href="#" @click.prevent="downloadAvi" style="cursor: pointer; color: var(--el-color-primary);">[Download AVI]</a></span>
+            <span v-if="currentOutput.final_frame"> - <a href="#" @click.prevent="extendVideo(currentOutput.final_frame)" style="cursor: pointer; color: var(--el-color-primary);">[Extend Video]</a></span>
         </div>
         <template #footer>
-            <ImageActions 
+            <ImageActions
                 :image-data="currentOutput"
                 :on-delete="handleClose" />
         </template>

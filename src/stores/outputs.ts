@@ -28,6 +28,7 @@ export interface ImageData {
     fps?: number;
     scheduler?: string;
     extra_avi?: string;
+    final_frame?: string;
     enable_hr?: 1 | 0;
     send_as_refimg?: 1 | 0;
     eta?: number;
