@@ -45,10 +45,13 @@ function handleClose() {
     modalOpen.value = false;
 }
 
-function extendVideo(image: string)
+function extendVideo(image: string | undefined)
 {
-    const gstore = useGeneratorStore();
-    gstore.generateImg2Img(image)
+    if(image)
+    {
+        const gstore = useGeneratorStore();
+        gstore.generateImg2Img(image);
+    }
 }
 
 function downloadAvi() {
