@@ -32,6 +32,7 @@ export interface ImageData {
     enable_hr?: 1 | 0;
     send_as_refimg?: 1 | 0;
     eta?: number;
+    job_timestamp?: string;
 }
 
 export const useOutputStore = defineStore("outputs", () => {
