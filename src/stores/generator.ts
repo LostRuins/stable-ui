@@ -26,6 +26,7 @@ function getDefaultStore() {
         fps: 16,
         enable_hr: false,
         send_as_refimg: true,
+        reverse_refimg: false,
         scheduler: "default",
     }
 }
@@ -356,11 +357,13 @@ export const useGeneratorStore = defineStore("generator", () => {
         for (const combo of combinations) {
             const { promptVariant: { full_prompt, ...promptParams }, ...comboParams } = combo;
             const sendAsRefimg = type === "Img2Img" ? currentParams.send_as_refimg : false;
+            const reverseRefimg = (sendAsRefimg && currentParams.frames>1) ? currentParams.reverse_refimg : false;
             let newgen:any = {
                 prompt: full_prompt,
                 params: {
                     ...currentParams,
                     send_as_refimg: sendAsRefimg,
+                    reverse_refimg: reverseRefimg,
                     ...comboParams,
                     ...promptParams,
                     init_images: sourceImage ? [ sourceImage.split(",")[1] ] : [],
@@ -496,6 +499,7 @@ export const useGeneratorStore = defineStore("generator", () => {
                     final_frame: final_frame,
                     enable_hr: image.params.enable_hr,
                     send_as_refimg: image.params.send_as_refimg,
+                    reverse_refimg: image.params.reverse_refimg,
                 }
                 if (image.info && typeof image.info === 'string' && image.info.trim() !== '') {
                     try {
