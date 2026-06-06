@@ -10,6 +10,7 @@ import { useLocalStorage } from "@vueuse/core";
 import { DEBUG_MODE, MAX_PARALLEL_REQUESTS } from "@/constants";
 import { validateResponse } from "@/utils/validate";
 import { extractLorasFromPrompt } from "@/utils/loras";
+import { convertToBase64 } from "@/utils/base64";
 function getDefaultStore() {
     return {
         steps: 20,
@@ -69,6 +70,14 @@ type IMultiSelectItem<T> = {
     allowedStates?: ('Disabled' | 'Enabled' | 'Multiple')[];
     selected: T[];
     mapToParam: (data: ImageData) => any;
+}
+
+type IReferenceImage = {
+    id: string;
+    name: string;
+    size: number;
+    dataUrl: string;
+    base64: string;
 }
 
 interface IMultiSelect {
@@ -394,7 +403,8 @@ export const useGeneratorStore = defineStore("generator", () => {
             {
                 newgen.params["fps"] = Math.min(maxFps.value, Math.max(minFps.value, Math.round(Number(newgen.params["fps"]) || getDefaultStore().fps)));
             }
-            if(referenceBase64Images && referenceBase64Images.length>0)
+            const referenceBase64Images = referenceImages.value.map(image => image.base64);
+            if(referenceBase64Images.length>0)
             {
                 newgen.params["extra_images"] = referenceBase64Images;
             }
@@ -804,36 +814,53 @@ export const useGeneratorStore = defineStore("generator", () => {
         return false;
     }
 
-    var referenceBase64Images: string[] = []; //i hate vue so im gonna do this in vanilla js
-    function setExtraImage(event:any)
-    {
-        let input = event.target;
-        referenceBase64Images = [];
-        if (input.files.length > 0) {
-            for(let i=0;i<input.files.length;++i)
-            {
-                let selectedFile = input.files[i];
-                const reader = new FileReader();
-                reader.onload = function (e) {
-                    let refimg = e.target?e.target.result as string:"";
-                    if(refimg.includes("data:image"))
-                    {
-                        refimg = refimg.split(',')[1];
-                    }
-                    console.log(refimg);
-                    referenceBase64Images.push(refimg);
-                };
-                reader.onerror = function () {
-                    console.log("Error reading file.");
-                };
-                reader.readAsDataURL(selectedFile);
-            }
-        } else {
-            console.log("No file to load")
+    const referenceImages = ref<IReferenceImage[]>([]);
+    async function setExtraImage(event:any) {
+        const input = event.target as HTMLInputElement;
+        const files = Array.from(input.files ?? []);
+
+        if (files.length === 0) {
+            return;
         }
+
+        const images = await Promise.all(files.map(async (selectedFile, index) => {
+            const dataUrl = await convertToBase64(selectedFile) as string;
+            return {
+                id: `${Date.now()}-${index}-${selectedFile.name}`,
+                name: selectedFile.name,
+                size: selectedFile.size,
+                dataUrl,
+                base64: dataUrl.includes("data:image") ? dataUrl.split(',')[1] : dataUrl,
+            };
+        }));
+
+        if(!referenceImages.value)
+        {
+            referenceImages.value = [];
+        }
+        for(let i=0;i<images.length;++i)
+        {
+            referenceImages.value.push(images[i]);
+        }
+        input.value = "";
     };
+
+    function removeExtraImage(index: number) {
+        referenceImages.value.splice(index, 1);
+    }
+
+    function moveExtraImage(index: number, direction: -1 | 1) {
+        const nextIndex = index + direction;
+        if (nextIndex < 0 || nextIndex >= referenceImages.value.length) return;
+
+        const images = [...referenceImages.value];
+        const [image] = images.splice(index, 1);
+        images.splice(nextIndex, 0, image);
+        referenceImages.value = images;
+    }
+
     function clearExtraImage() {
-        referenceBase64Images = [];
+        referenceImages.value = [];
         const inputElement = document.getElementById('extra_image_input') as HTMLInputElement;
         if (inputElement) {
             inputElement.value = "";
@@ -851,6 +878,7 @@ export const useGeneratorStore = defineStore("generator", () => {
         uploadDimensions,
         cancelled,
         multiSelect,
+        referenceImages,
         negativePrompt,
         generating,
         negativePromptLibrary,
@@ -897,6 +925,8 @@ export const useGeneratorStore = defineStore("generator", () => {
         pushToPromptHistory,
         removeFromPromptHistory,
         setExtraImage,
+        removeExtraImage,
+        moveExtraImage,
         clearExtraImage,
         getAvailableSamplers,
         getAvailableSchedulers,

@@ -11,13 +11,17 @@ import {
     ElMenu,
     ElTooltip,
     ElRow,
-    ElCol
+    ElCol,
+    ElImage
 } from 'element-plus';
 import {
     Comment,
     PictureFilled,
     MagicStick,
     CloseBold,
+    ArrowUp,
+    ArrowDown,
+    Delete,
 } from '@element-plus/icons-vue';
 import BrushFilled from '../components/icons/BrushFilled.vue';
 import ImageSearch from '../components/icons/ImageSearch.vue';
@@ -188,15 +192,76 @@ handleUrlParams();
                 <form-slider label="Init Strength"         prop="denoise"         v-model="store.params.denoising_strength"        :min="store.minDenoise"       :max="store.maxDenoise"    :step="0.01" info="The final image will diverge from the starting image at higher values. 0=unchanged, 1=fullychanged" v-if="store.sourceGeneratorTypes.includes(store.generatorType)" />
                 <form-slider label="Video Frames"          prop="frames"          v-model="store.params.frames"                    :min="store.minFrames"        :max="store.maxFrames"     info="Number of consecutive video frames to generate (Video models only). More frames increases memory usage."/>
                 <form-slider label="FPS"                   prop="fps"             v-model="store.params.fps"                       :min="store.minFps"           :max="store.maxFps"        :disabled="store.params.frames <= 1" info="Frames per second for video generation." v-if="store.params.frames > 1" />
-                <div>
-                <span style="height: 100%;font-size: 14px;">Reference Image: <br>(Photomaker/Kontext) </span>
-                <input class="el-button"
-                type="file"
-                id="extra_image_input"
-                @change="store.setExtraImage($event)"
-                accept="image/*" multiple
-                />
-                <button @click="store.clearExtraImage()" class="el-button">Clear Image</button>
+                <div class="reference-images">
+                    <div class="reference-images-header">
+                        <span class="reference-images-label">Reference Images</span>
+                        <div class="reference-images-actions">
+
+                            <input
+                                class="reference-images-input el-button"
+                                type="file"
+                                id="extra_image_input"
+                                @change="store.setExtraImage($event)"
+                                accept="image/*"
+                                multiple
+                            />
+                            <el-button
+                                @click="store.clearExtraImage()"
+                                :disabled="store.referenceImages.length === 0"
+                            >
+                                Clear Images
+                            </el-button>
+                        </div>
+                    </div>
+                    <div class="reference-image-list" v-if="store.referenceImages.length > 0">
+                        <div
+                            class="reference-image-item"
+                            v-for="(image, index) in store.referenceImages"
+                            :key="image.id"
+                        >
+                            <span class="reference-image-index">{{ index + 1 }}</span>
+                            <el-image
+                                class="reference-image-thumb"
+                                :src="image.dataUrl"
+                                fit="cover"
+                                :preview-src-list="store.referenceImages.map(refImage => refImage.dataUrl)"
+                                :initial-index="index"
+                                preview-teleported
+                            />
+                            <span class="reference-image-name" :title="image.name">{{ image.name }}</span>
+                            <div class="reference-image-controls">
+                                <el-tooltip content="Move up" placement="top">
+                                    <el-button
+                                        class="small-btn"
+                                        :icon="ArrowUp"
+                                        :disabled="index === 0"
+                                        @click="store.moveExtraImage(index, -1)"
+                                    />
+                                </el-tooltip>
+                                <el-tooltip content="Move down" placement="top">
+                                    <el-button
+                                        class="small-btn"
+                                        :icon="ArrowDown"
+                                        :disabled="index === store.referenceImages.length - 1"
+                                        @click="store.moveExtraImage(index, 1)"
+                                    />
+                                </el-tooltip>
+                                <el-tooltip content="Remove" placement="top">
+                                    <el-button
+                                        class="small-btn"
+                                        type="danger"
+                                        :icon="Delete"
+                                        plain
+                                        @click="store.removeExtraImage(index)"
+                                    />
+                                </el-tooltip>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="reference-image-empty" v-else>
+                        No reference images selected.
+                    </div>
+                </div>
                 <el-row>
                     <el-col :span="isMobile ? 24 : 12">
                         <form-switch label="ESRGAN Upscale"    prop="enable_hr"   v-model="store.params.enable_hr"    info="Enable upscale with ESRGAN." />
@@ -206,7 +271,6 @@ handleUrlParams();
                         <form-switch label="Reverse RefImg"    prop="reverse_refimg"   v-model="store.params.reverse_refimg"  v-if="store.generatorType === 'Img2Img' && store.params.send_as_refimg && store.params.frames>1"  info="Use the reference image as the final frame instead of the first frame." />
                     </el-col>
                 </el-row>
-                </div>
             </div>
             <div class="main">
                 <el-button @click="() => {store.cancelled=true;store.generating=false;store.resetStore();}" class="reset-btn">Reset</el-button>
@@ -319,6 +383,94 @@ handleUrlParams();
     max-width: 90%;
 }
 
+.reference-images {
+    margin: 14px 0;
+}
+
+.reference-images-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.reference-images-label {
+    flex: 0 0 120px;
+    font-size: 14px;
+    color: var(--el-text-color-regular);
+}
+
+.reference-images-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+}
+
+.reference-images-input {
+    min-width: 0;
+    max-width: 100%;
+}
+
+.reference-image-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.reference-image-item {
+    display: grid;
+    grid-template-columns: 28px 48px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    min-height: 58px;
+    padding: 6px 8px;
+    border: 1px solid var(--el-border-color);
+    border-radius: 6px;
+    background: var(--el-fill-color-blank);
+}
+
+.reference-image-index {
+    font-size: 13px;
+    color: var(--el-text-color-secondary);
+    text-align: center;
+}
+
+.reference-image-thumb {
+    width: 48px;
+    height: 48px;
+    border-radius: 4px;
+    border: 1px solid var(--el-border-color-lighter);
+    overflow: hidden;
+}
+
+.reference-image-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+}
+
+.reference-image-controls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.reference-image-controls .el-button + .el-button {
+    margin-left: 0;
+}
+
+.reference-image-empty {
+    padding: 10px 8px;
+    border: 1px dashed var(--el-border-color);
+    border-radius: 6px;
+    color: var(--el-text-color-secondary);
+    font-size: 13px;
+}
+
 .image {
     grid-area: image;
 }
@@ -364,6 +516,20 @@ handleUrlParams();
         max-width: 100%;
     }
 
+    .reference-images-header {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .reference-images-label {
+        flex-basis: auto;
+    }
+
+    .reference-images-actions {
+        width: 100%;
+        flex-wrap: wrap;
+    }
+
     .main {
         flex-wrap: wrap;
         gap: 5px;
@@ -399,6 +565,21 @@ handleUrlParams();
         padding-top: 20px;
         padding-left: 0;
         margin-left: 0;
+    }
+
+    .reference-image-item {
+        grid-template-columns: 24px 44px minmax(0, 1fr);
+    }
+
+    .reference-image-controls {
+        grid-column: 3;
+        justify-content: flex-end;
+        width: 100%;
+    }
+
+    .reference-image-thumb {
+        width: 44px;
+        height: 44px;
     }
 }
 
