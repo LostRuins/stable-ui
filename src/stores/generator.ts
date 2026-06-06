@@ -817,7 +817,8 @@ export const useGeneratorStore = defineStore("generator", () => {
     const referenceImages = ref<IReferenceImage[]>([]);
     async function setExtraImage(event:any) {
         const input = event.target as HTMLInputElement;
-        const files = Array.from(input.files ?? []);
+        const fileList = input.files ?? event.dataTransfer?.files;
+        const files = Array.from(fileList ?? []) as File[];
 
         if (files.length === 0) {
             return;
@@ -842,7 +843,9 @@ export const useGeneratorStore = defineStore("generator", () => {
         {
             referenceImages.value.push(images[i]);
         }
-        input.value = "";
+        if (input.value !== undefined) {
+            input.value = "";
+        }
     };
 
     function removeExtraImage(index: number) {

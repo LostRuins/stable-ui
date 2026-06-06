@@ -111,6 +111,10 @@ function onDimensionsChange() {
     canvasStore.updateCropPreview();
 }
 
+function selectExtraImages() {
+    document.getElementById('extra_image_input')?.click();
+}
+
 disableBadge();
 handleUrlParams();
 </script>
@@ -192,19 +196,26 @@ handleUrlParams();
                 <form-slider label="Init Strength"         prop="denoise"         v-model="store.params.denoising_strength"        :min="store.minDenoise"       :max="store.maxDenoise"    :step="0.01" info="The final image will diverge from the starting image at higher values. 0=unchanged, 1=fullychanged" v-if="store.sourceGeneratorTypes.includes(store.generatorType)" />
                 <form-slider label="Video Frames"          prop="frames"          v-model="store.params.frames"                    :min="store.minFrames"        :max="store.maxFrames"     info="Number of consecutive video frames to generate (Video models only). More frames increases memory usage."/>
                 <form-slider label="FPS"                   prop="fps"             v-model="store.params.fps"                       :min="store.minFps"           :max="store.maxFps"        :disabled="store.params.frames <= 1" info="Frames per second for video generation." v-if="store.params.frames > 1" />
-                <div class="reference-images">
+                <div
+                    class="reference-images"
+                    @dragover.prevent
+                    @drop.prevent="store.setExtraImage($event)"
+                >
                     <div class="reference-images-header">
                         <span class="reference-images-label">Reference Images</span>
                         <div class="reference-images-actions">
 
                             <input
-                                class="reference-images-input el-button"
+                                class="reference-images-input"
                                 type="file"
                                 id="extra_image_input"
                                 @change="store.setExtraImage($event)"
                                 accept="image/*"
                                 multiple
                             />
+                            <el-button @click="selectExtraImages">
+                                Select or Drag Files
+                            </el-button>
                             <el-button
                                 @click="store.clearExtraImage()"
                                 :disabled="store.referenceImages.length === 0"
@@ -410,8 +421,7 @@ handleUrlParams();
 }
 
 .reference-images-input {
-    min-width: 0;
-    max-width: 100%;
+    display: none;
 }
 
 .reference-image-list {
