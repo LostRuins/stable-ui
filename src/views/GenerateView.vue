@@ -115,6 +115,23 @@ function selectExtraImages() {
     document.getElementById('extra_image_input')?.click();
 }
 
+function isReferenceImage(image: { dataUrl?: string }) {
+    return image.dataUrl?.startsWith('data:image');
+}
+
+function getReferenceImagePreviewList() {
+    return store.referenceImages
+        .filter(isReferenceImage)
+        .map(referenceImage => referenceImage.dataUrl);
+}
+
+function getReferenceImagePreviewIndex(index: number) {
+    return store.referenceImages
+        .slice(0, index)
+        .filter(isReferenceImage)
+        .length;
+}
+
 disableBadge();
 handleUrlParams();
 </script>
@@ -227,16 +244,18 @@ handleUrlParams();
                     <div class="reference-image-list" v-if="store.referenceImages.length > 0">
                         <div
                             class="reference-image-item"
+                            :class="{ 'reference-file-item': !isReferenceImage(image) }"
                             v-for="(image, index) in store.referenceImages"
                             :key="image.id"
                         >
                             <span class="reference-image-index">{{ index + 1 }}</span>
                             <el-image
+                                v-if="isReferenceImage(image)"
                                 class="reference-image-thumb"
                                 :src="image.dataUrl"
                                 fit="cover"
-                                :preview-src-list="store.referenceImages.map(refImage => refImage.dataUrl)"
-                                :initial-index="index"
+                                :preview-src-list="getReferenceImagePreviewList()"
+                                :initial-index="getReferenceImagePreviewIndex(index)"
                                 preview-teleported
                             />
                             <span class="reference-image-name" :title="image.name">{{ image.name }}</span>
@@ -442,6 +461,10 @@ handleUrlParams();
     background: var(--el-fill-color-blank);
 }
 
+.reference-file-item {
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+}
+
 .reference-image-index {
     font-size: 13px;
     color: var(--el-text-color-secondary);
@@ -581,10 +604,18 @@ handleUrlParams();
         grid-template-columns: 24px 44px minmax(0, 1fr);
     }
 
+    .reference-file-item {
+        grid-template-columns: 24px minmax(0, 1fr);
+    }
+
     .reference-image-controls {
         grid-column: 3;
         justify-content: flex-end;
         width: 100%;
+    }
+
+    .reference-file-item .reference-image-controls {
+        grid-column: 2;
     }
 
     .reference-image-thumb {
