@@ -104,6 +104,7 @@ function downloadAvi() {
             <span>Dimensions: {{currentOutput.width || "???"}}x{{currentOutput.height || "???"}} - </span>
             <span>Frames: {{currentOutput.frames || "1"}}</span>
             <span v-if="currentOutput.frames && currentOutput.frames > 1"> - FPS: {{currentOutput.fps || "Unknown"}}</span>
+            <span v-if="currentOutput.lora_meta"> - LoRA: {{currentOutput.lora_meta}}</span>
             <br/>
             <b>
             <span v-if="currentOutput.frames && currentOutput.frames > 1"> <a href="#" @click.prevent="downloadGif" style="cursor: pointer; color: var(--el-color-primary);">[Download GIF]</a></span>

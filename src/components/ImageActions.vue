@@ -91,6 +91,7 @@ async function copyLink(imageData: ImageData) {
         enable_hr: imageData.enable_hr,
         send_as_refimg: imageData.send_as_refimg,
         reverse_refimg: imageData.reverse_refimg,
+        lora_meta: imageData.lora_meta
     }
     const path = window.location.pathname.replace("images", "");
     let link = `${urlBase}${path}?share=`;

@@ -510,6 +510,7 @@ export const useGeneratorStore = defineStore("generator", () => {
                     enable_hr: image.params.enable_hr,
                     send_as_refimg: image.params.send_as_refimg,
                     reverse_refimg: image.params.reverse_refimg,
+                    lora_meta: "",
                 }
                 if (image.info && typeof image.info === 'string' && image.info.trim() !== '') {
                     try {
@@ -528,6 +529,9 @@ export const useGeneratorStore = defineStore("generator", () => {
                             params.scheduler = info.extra_generation_params['Schedule type'];
                         } else {
                             params.scheduler = image.params.scheduler;
+                        }
+                        if (info['lora_meta']) {
+                            params.lora_meta = info['lora_meta'];
                         }
                     } catch (e) {
                         console.warn('Failed to parse info JSON:', e);

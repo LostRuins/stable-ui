@@ -33,6 +33,7 @@ export interface ImageData {
     send_as_refimg?: 1 | 0;
     reverse_refimg?: 1 | 0;
     eta?: number;
+    lora_meta?: string;
 }
 
 export const useOutputStore = defineStore("outputs", () => {
