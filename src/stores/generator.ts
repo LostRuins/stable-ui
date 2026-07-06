@@ -198,6 +198,7 @@ export const useGeneratorStore = defineStore("generator", () => {
         const baseUrl = useOptionsStore().baseURL.length === 0 ? "." : useOptionsStore().baseURL.replace(/\/+$/, "");
         return `${baseUrl}/sdapi/v1/get_last.png?genkey=${encodeURIComponent(lastImageGenkey.value)}`;
     });
+    const lastImageRecoveryAvailable = computed(() => lastImageRecoveryUrl.value !== "" && !generating.value);
 
     function clearLastImageGenkey() {
         lastImageGenkey.value = "";
@@ -254,6 +255,7 @@ export const useGeneratorStore = defineStore("generator", () => {
         outputs.value = [];
         useUIStore().showGeneratedImages = false;
         clearQueue();
+        clearLastImageGenkey();
         return true;
     }
 
@@ -498,6 +500,12 @@ export const useGeneratorStore = defineStore("generator", () => {
                 next.failed = true;
                 console.error('Error fetching image:', error);
             }
+        }
+        if (queue.value.some(el => el.failed) && queue.value.every(el => el.gathered || el.failed)) {
+            generating.value = false;
+            clearInterval(timer.value.interval);
+            timer.value.interval = 0;
+            timer.value.seconds = 0;
         }
 
         if (DEBUG_MODE) console.log("Images queued");
@@ -941,6 +949,7 @@ export const useGeneratorStore = defineStore("generator", () => {
         timer,
         lastImageGenkey,
         lastImageRecoveryUrl,
+        lastImageRecoveryAvailable,
         clearLastImageGenkey,
         openLastImageRecovery,
         // Constants

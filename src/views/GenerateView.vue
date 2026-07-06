@@ -325,6 +325,7 @@ handleUrlParams();
                         store.cancelled = true;
                         store.generating = false;
                         store.clearQueue();
+                        store.clearLastImageGenkey();
                     }"
                 >Cancel all</el-button>
             </div>
@@ -346,7 +347,7 @@ handleUrlParams();
                     <generated-carousel v-if="uiStore.showGeneratedImages && store.outputs.length !== 0" />
                 </el-card>
                 <el-link
-                    v-if="store.lastImageRecoveryUrl"
+                    v-if="store.lastImageRecoveryAvailable"
                     class="last-image-recovery"
                     :href="store.lastImageRecoveryUrl"
                     target="_blank"
