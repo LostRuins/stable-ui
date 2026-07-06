@@ -8,6 +8,7 @@ import {
     ElForm,
     ElButton,
     ElCard,
+    ElLink,
     ElMenu,
     ElTooltip,
     ElRow,
@@ -344,6 +345,16 @@ handleUrlParams();
                     />
                     <generated-carousel v-if="uiStore.showGeneratedImages && store.outputs.length !== 0" />
                 </el-card>
+                <el-link
+                    v-if="store.lastImageRecoveryUrl"
+                    class="last-image-recovery"
+                    :href="store.lastImageRecoveryUrl"
+                    target="_blank"
+                    type="primary"
+                    @click.prevent="store.openLastImageRecovery()"
+                >
+                    Recover last generated image
+                </el-link>
             </div>
         </el-form>
     </div>
@@ -506,6 +517,12 @@ handleUrlParams();
 
 .image {
     grid-area: image;
+    flex-direction: column;
+}
+
+.last-image-recovery {
+    margin-top: 10px;
+    font-size: 13px;
 }
 
 .container {
@@ -535,8 +552,9 @@ handleUrlParams();
 
     .container {
         display: grid;
-        height: 110vh;
-        grid-template-rows: minmax(400px, 45vh) 65px 60%;
+        height: auto;
+        min-height: 110vh;
+        grid-template-rows: minmax(400px, 45vh) max-content auto;
         grid-template-columns: 100%;
         gap: 8px;
         grid-template-areas:
@@ -591,7 +609,7 @@ handleUrlParams();
     }
 
     .container {
-        grid-template-rows: minmax(400px, 50vh) 65px 60%;
+        grid-template-rows: minmax(400px, 50vh) max-content auto;
     }
 
     .form {

@@ -36,6 +36,10 @@ export function getNewSeed() {
     return Math.floor(Math.random() * 9999999) + 1; //keep seeds under 10m for peace of mind, some platforms may use f32 which has a max precision of 16m
 }
 
+function getNewGenkey() {
+    return Math.floor(Math.random() * 900000 + 100000).toString();
+}
+
 export interface IModelData {
     title?: string;
     model_name?: string;
@@ -188,6 +192,22 @@ export const useGeneratorStore = defineStore("generator", () => {
     const cancelled  = ref(false);
     const outputs    = ref<CarouselOutput[]>([]);
     const queue = ref<ICurrentGeneration[]>([]);
+    const lastImageGenkey = useLocalStorage("lastImageGenkey", "");
+    const lastImageRecoveryUrl = computed(() => {
+        if (!lastImageGenkey.value) return "";
+        const baseUrl = useOptionsStore().baseURL.length === 0 ? "." : useOptionsStore().baseURL.replace(/\/+$/, "");
+        return `${baseUrl}/sdapi/v1/get_last.png?genkey=${encodeURIComponent(lastImageGenkey.value)}`;
+    });
+
+    function clearLastImageGenkey() {
+        lastImageGenkey.value = "";
+    }
+
+    function openLastImageRecovery() {
+        if (!lastImageRecoveryUrl.value) return;
+        window.open(lastImageRecoveryUrl.value, "_blank", "noopener");
+        clearLastImageGenkey();
+    }
 
     const minDimensions = ref(64);
     const maxDimensions = computed(() => useOptionsStore().allowLargerParams === "Enabled" ? 3072 : 1024);
@@ -559,6 +579,7 @@ export const useGeneratorStore = defineStore("generator", () => {
             queue.value = [];
             generating.value = false;
             useUIStore().showGeneratedImages = true;
+            clearLastImageGenkey();
             clearInterval(timer.value.interval);
             timer.value.interval = 0;
             timer.value.seconds = 0;
@@ -693,12 +714,18 @@ export const useGeneratorStore = defineStore("generator", () => {
     async function fetchNewID(parameters: any) {
         const optionsStore = useOptionsStore();
         try {
+            const genkey = getNewGenkey();
+            lastImageGenkey.value = genkey;
+            const requestParameters = {
+                ...parameters,
+                genkey,
+            };
             const response: Response = await fetch(`${optionsStore.baseURL.length === 0 ? "." : optionsStore.baseURL}/sdapi/v1/${parameters.init_images.length > 0 ? 'img' : 'txt'}2img`, {
                 method: "POST",
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify(parameters)
+                body: JSON.stringify(requestParameters)
             })
             const resJSON = await response.json();
             if (!validateResponse(response, resJSON, 200, "Failed to fetch", onInvalidResponse)) return false;
@@ -912,6 +939,10 @@ export const useGeneratorStore = defineStore("generator", () => {
         queue,
         promptHistory,
         timer,
+        lastImageGenkey,
+        lastImageRecoveryUrl,
+        clearLastImageGenkey,
+        openLastImageRecovery,
         // Constants
         validGeneratorTypes,
         sourceGeneratorTypes,
