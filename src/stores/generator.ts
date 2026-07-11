@@ -191,6 +191,7 @@ export const useGeneratorStore = defineStore("generator", () => {
     const generating = ref(false);
     const cancelled  = ref(false);
     const outputs    = ref<CarouselOutput[]>([]);
+    const abortController = ref<AbortController | null>(null);
     const queue = ref<ICurrentGeneration[]>([]);
     const lastImageGenkey = useLocalStorage("lastImageGenkey", "");
     const lastImageRecoveryUrl = computed(() => {
@@ -471,6 +472,7 @@ export const useGeneratorStore = defineStore("generator", () => {
         }
 
         // Reset variables
+        abortController.value = new AbortController();
         cancelled.value = false;
 
         if (timer.value.interval) {
@@ -490,7 +492,7 @@ export const useGeneratorStore = defineStore("generator", () => {
             if (!next) break;
             next.gathered = true;
             try {
-                const res = await fetchNewID(next.params);
+                const res = await fetchNewID(next.params, abortController.value?.signal);
                 if (!res) {
                     next.failed = true;
                     continue;
@@ -719,7 +721,7 @@ export const useGeneratorStore = defineStore("generator", () => {
     /**
      * Fetches a new ID
      */
-    async function fetchNewID(parameters: any) {
+    async function fetchNewID(parameters: any, signal?: AbortSignal) {
         const optionsStore = useOptionsStore();
         try {
             const genkey = getNewGenkey();
@@ -733,7 +735,8 @@ export const useGeneratorStore = defineStore("generator", () => {
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify(requestParameters)
+                body: JSON.stringify(requestParameters),
+                signal
             })
             const resJSON = await response.json();
             if (!validateResponse(response, resJSON, 200, "Failed to fetch", onInvalidResponse)) return false;
@@ -919,6 +922,7 @@ export const useGeneratorStore = defineStore("generator", () => {
         img2img,
         uploadDimensions,
         cancelled,
+        abortController,
         multiSelect,
         referenceImages,
         negativePrompt,

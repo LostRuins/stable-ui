@@ -322,6 +322,7 @@ handleUrlParams();
                     style="width: 25%;"
                     :disabled="store.cancelled"
                     @click="() => {
+                        store.abortController?.abort();
                         store.cancelled = true;
                         store.generating = false;
                         store.clearQueue();
