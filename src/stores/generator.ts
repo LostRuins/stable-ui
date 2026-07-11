@@ -435,6 +435,12 @@ export const useGeneratorStore = defineStore("generator", () => {
             {
                 newgen.params["video_output_type"] = 2; //request avi to download as well
             }
+            if(useOptionsStore().keepImageGenOnDisconnect === "Enabled")
+            {
+                newgen.params["kcpp_extra_args"] = {
+                    keep_image_gen_on_disconnect: true
+                };
+            }
             paramsCached.push(newgen);
         }
 

@@ -92,6 +92,7 @@ async function bulkDownload() {
                     <form-radio :label="item.name" prop="pageless" v-model="item.state" :options="item.allowedStates ?? []" />
                 </div>
                 <form-radio  label="Allow Larger Params" prop="pageless" v-model="store.allowLargerParams" :options="['Enabled', 'Disabled']" />
+                <form-radio  label="Keep generation on disconnect" prop="keepImageGenOnDisconnect" v-model="store.keepImageGenOnDisconnect" :options="['Enabled', 'Disabled']" info="By default, a client disconnect or an abort action causes the ongoing generation to be interrupted as soon as possible and discarded. Enabling this option overrides that behavior, allowing the generation to finish, and making the image available to be downloaded by the UI when ready." />
                 <form-select
                     label="Image Resize Mode"
                     prop="imageResizeMode"
