@@ -113,6 +113,11 @@ export const useGeneratorStore = defineStore("generator", () => {
         interval: 0 as number | NodeJS.Timeout,
         seconds: 0 as number,
     });
+    const progressInfo = ref<{
+        percentage: number;
+        textInfo: string | null;
+    } | null>(null);
+    const progressInterval = ref<number | NodeJS.Timeout>(0);
     const multiSelect = ref<IMultiSelect>({
         sampler: {
             name: "Sampler",
@@ -489,6 +494,7 @@ export const useGeneratorStore = defineStore("generator", () => {
         timer.value.interval = setInterval(() => {
             timer.value.seconds++;
         }, 1000);
+        startProgressPolling();
 
         // Loop until queue is done or generation is cancelled
         while (!queue.value.every(el => el.gathered || el.failed) && !cancelled.value) {
@@ -514,6 +520,7 @@ export const useGeneratorStore = defineStore("generator", () => {
             clearInterval(timer.value.interval);
             timer.value.interval = 0;
             timer.value.seconds = 0;
+            stopProgressPolling();
             queue.value = [];
         }
 
@@ -600,6 +607,7 @@ export const useGeneratorStore = defineStore("generator", () => {
             clearInterval(timer.value.interval);
             timer.value.interval = 0;
             timer.value.seconds = 0;
+            stopProgressPolling();
         }
 
         return finalParams;
@@ -919,6 +927,37 @@ export const useGeneratorStore = defineStore("generator", () => {
         }
     }
 
+    // --- Progress polling ---
+    async function fetchProgressInfo(): Promise<void> {
+        const optionsStore = useOptionsStore();
+        const baseUrl = optionsStore.baseURL.length === 0 ? "." : optionsStore.baseURL;
+        try {
+            const response = await fetch(`${baseUrl}/sdapi/v1/progress?skip_current_image=true`);
+            if (!response.ok) return;
+            const data = await response.json();
+            progressInfo.value = {
+                percentage: Math.round((data.progress ?? 0) * 100),
+                textInfo: data.textinfo || null,
+            };
+        } catch {
+            // Silently ignore - progress endpoint may not be available
+        }
+    }
+
+    function startProgressPolling(): void {
+        if (progressInterval.value) return;
+        progressInfo.value = { percentage: 0, textInfo: null };
+        progressInterval.value = setInterval(fetchProgressInfo, 1000);
+    }
+
+    function stopProgressPolling(): void {
+        if (progressInterval.value) {
+            clearInterval(progressInterval.value);
+            progressInterval.value = 0;
+        }
+        progressInfo.value = null;
+    }
+
     return {
         // Variables
         generatorType,
@@ -958,6 +997,8 @@ export const useGeneratorStore = defineStore("generator", () => {
         queue,
         promptHistory,
         timer,
+        progressInfo,
+        progressInterval,
         lastImageGenkey,
         lastImageRecoveryUrl,
         lastImageRecoveryAvailable,
@@ -978,6 +1019,7 @@ export const useGeneratorStore = defineStore("generator", () => {
         resetStore,
         clearQueue,
         clearOutputs,
+        stopProgressPolling,
         pushToNegativeLibrary,
         removeFromNegativeLibrary,
         pushToPromptHistory,
