@@ -116,6 +116,9 @@ export const useGeneratorStore = defineStore("generator", () => {
     const progressInfo = ref<{
         percentage: number;
         textInfo: string | null;
+        currentStep: number;
+        totalSteps: number;
+        previewImage: string | null;
     } | null>(null);
     const progressInterval = ref<number | NodeJS.Timeout>(0);
     const multiSelect = ref<IMultiSelect>({
@@ -928,25 +931,61 @@ export const useGeneratorStore = defineStore("generator", () => {
     }
 
     // --- Progress polling ---
+    const lastPreviewKey = ref("");
+    const lastPreviewStep = ref(-1);
     async function fetchProgressInfo(): Promise<void> {
         const optionsStore = useOptionsStore();
         const baseUrl = optionsStore.baseURL.length === 0 ? "." : optionsStore.baseURL;
         try {
-            const response = await fetch(`${baseUrl}/sdapi/v1/progress?skip_current_image=true`);
+            // lightweight poll for numbers
+            const response = await fetch(`${baseUrl}/sdapi/v1/progress?skip_current_image=true&genkey=${encodeURIComponent(lastImageGenkey.value)}`);
             if (!response.ok) return;
             const data = await response.json();
+            if (DEBUG_MODE) console.error('progressInfo:', data);
+
             progressInfo.value = {
                 percentage: Math.round((data.progress ?? 0) * 100),
                 textInfo: data.textinfo || null,
+                currentStep: data.state?.sampling_step ?? 0,
+                totalSteps: data.state?.sampling_steps ?? 0,
+                previewImage: progressInfo.value?.previewImage ?? null
             };
+
+            if (lastPreviewKey.value != lastImageGenkey.value) {
+                lastPreviewKey.value = lastImageGenkey.value;
+                lastPreviewStep.value = -1;
+            }
+
+            const currentStep = data.state?.sampling_step ?? 0;
+            if (lastPreviewStep.value != currentStep) {
+                lastPreviewStep.value = currentStep;
+                // Only fetch preview image if enabled
+                if (optionsStore.previewImageOnProgress === "Enabled") {
+                    fetchPreviewImage(baseUrl);
+                }
+            }
         } catch {
-            // Silently ignore - progress endpoint may not be available
+            // progress endpoint may not be available
+        }
+    }
+
+    async function fetchPreviewImage(baseUrl: string): Promise<void> {
+        try {
+            const response = await fetch(`${baseUrl}/sdapi/v1/progress?genkey=${encodeURIComponent(lastImageGenkey.value)}`);
+            if (!response.ok) return;
+            const data = await response.json();
+            if (data.current_image && progressInfo.value) {
+                progressInfo.value.previewImage = data.current_image;
+            }
+        } catch {
+            // progress endpoint may not be available
         }
     }
 
     function startProgressPolling(): void {
+        lastPreviewKey.value = '';
         if (progressInterval.value) return;
-        progressInfo.value = { percentage: 0, textInfo: null };
+        progressInfo.value = { percentage: 0, textInfo: null, currentStep: 0, totalSteps: 0, previewImage: null };
         progressInterval.value = setInterval(fetchProgressInfo, 1000);
     }
 

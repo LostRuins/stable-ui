@@ -15,6 +15,7 @@ export const useOptionsStore = defineStore("options", () => {
     const allowLargerParams = useLocalStorage<IToggle>("allowLargerParams", "Disabled");
     const alsoRequestAvi = useLocalStorage<IToggle>("alsoRequestAvi", "Disabled");
     const keepImageGenOnDisconnect = useLocalStorage<IToggle>("keepImageGenOnDisconnect", "Disabled");
+    const previewImageOnProgress = useLocalStorage<IToggle>("previewImageOnProgress", "Disabled");
     const autoCarousel = useLocalStorage<IToggle>("autoCarousel", "Enabled");
     const useBeta = useLocalStorage<IToggle>("useBeta", "Disabled");
     const imageDownloadType = useLocalStorage<"WEBP" | "PNG" | "JPG" | "GIF" >("imageDownloadType", "PNG")
@@ -35,6 +36,7 @@ export const useOptionsStore = defineStore("options", () => {
         allowLargerParams,
         alsoRequestAvi,
         keepImageGenOnDisconnect,
+        previewImageOnProgress,
         autoCarousel,
         useBeta,
         imageDownloadType,
