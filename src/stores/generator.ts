@@ -514,6 +514,7 @@ export const useGeneratorStore = defineStore("generator", () => {
             clearInterval(timer.value.interval);
             timer.value.interval = 0;
             timer.value.seconds = 0;
+            queue.value = [];
         }
 
         if (DEBUG_MODE) console.log("Images queued");
