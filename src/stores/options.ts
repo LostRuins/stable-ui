@@ -13,7 +13,7 @@ export const useOptionsStore = defineStore("options", () => {
     const pageSize = useLocalStorage("pageSize", 25);
     const pageless = useLocalStorage<IToggle>("pageless", "Disabled");
     const allowLargerParams = useLocalStorage<IToggle>("allowLargerParams", "Disabled");
-    const alsoRequestAvi = useLocalStorage<IToggle>("alsoRequestAvi", "Disabled");
+    const alsoRequestAvi = useLocalStorage<IToggle>("alsoRequestAvi", "Enabled");
     const keepImageGenOnDisconnect = useLocalStorage<IToggle>("keepImageGenOnDisconnect", "Disabled");
     const autoCarousel = useLocalStorage<IToggle>("autoCarousel", "Enabled");
     const useBeta = useLocalStorage<IToggle>("useBeta", "Disabled");
