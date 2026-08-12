@@ -959,8 +959,8 @@ export const useGeneratorStore = defineStore("generator", () => {
             const currentStep = data.state?.sampling_step ?? 0;
             if (lastPreviewStep.value != currentStep) {
                 lastPreviewStep.value = currentStep;
-                // Only fetch preview image if enabled
-                if (optionsStore.previewImageOnProgress === "Enabled") {
+                // Only fetch preview image if set to "Image"
+                if (optionsStore.fetchGenerationProgress === "Image") {
                     fetchPreviewImage(baseUrl);
                 }
             }
@@ -985,6 +985,8 @@ export const useGeneratorStore = defineStore("generator", () => {
     function startProgressPolling(): void {
         lastPreviewKey.value = '';
         if (progressInterval.value) return;
+        // Skip polling if set to "Off"
+        if (useOptionsStore().fetchGenerationProgress === "Off") return;
         progressInfo.value = { percentage: 0, textInfo: null, currentStep: 0, totalSteps: 0, previewImage: null };
         progressInterval.value = setInterval(fetchProgressInfo, 1000);
     }
