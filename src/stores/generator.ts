@@ -113,6 +113,14 @@ export const useGeneratorStore = defineStore("generator", () => {
         interval: 0 as number | NodeJS.Timeout,
         seconds: 0 as number,
     });
+    const progressInfo = ref<{
+        percentage: number;
+        textInfo: string | null;
+        currentStep: number;
+        totalSteps: number;
+        previewImage: string | null;
+    } | null>(null);
+    const progressInterval = ref<number | NodeJS.Timeout>(0);
     const multiSelect = ref<IMultiSelect>({
         sampler: {
             name: "Sampler",
@@ -489,6 +497,7 @@ export const useGeneratorStore = defineStore("generator", () => {
         timer.value.interval = setInterval(() => {
             timer.value.seconds++;
         }, 1000);
+        startProgressPolling();
 
         // Loop until queue is done or generation is cancelled
         while (!queue.value.every(el => el.gathered || el.failed) && !cancelled.value) {
@@ -514,6 +523,7 @@ export const useGeneratorStore = defineStore("generator", () => {
             clearInterval(timer.value.interval);
             timer.value.interval = 0;
             timer.value.seconds = 0;
+            stopProgressPolling();
             queue.value = [];
         }
 
@@ -600,6 +610,7 @@ export const useGeneratorStore = defineStore("generator", () => {
             clearInterval(timer.value.interval);
             timer.value.interval = 0;
             timer.value.seconds = 0;
+            stopProgressPolling();
         }
 
         return finalParams;
@@ -919,6 +930,75 @@ export const useGeneratorStore = defineStore("generator", () => {
         }
     }
 
+    // --- Progress polling ---
+    const lastPreviewKey = ref("");
+    const lastPreviewStep = ref(-1);
+    async function fetchProgressInfo(): Promise<void> {
+        const optionsStore = useOptionsStore();
+        const baseUrl = optionsStore.baseURL.length === 0 ? "." : optionsStore.baseURL;
+        try {
+            // lightweight poll for numbers
+            const response = await fetch(`${baseUrl}/sdapi/v1/progress?skip_current_image=true&genkey=${encodeURIComponent(lastImageGenkey.value)}`);
+            if (!response.ok) return;
+            const data = await response.json();
+            if (DEBUG_MODE) console.error('progressInfo:', data);
+
+            progressInfo.value = {
+                percentage: Math.round((data.progress ?? 0) * 100),
+                textInfo: data.textinfo || null,
+                currentStep: data.state?.sampling_step ?? 0,
+                totalSteps: data.state?.sampling_steps ?? 0,
+                previewImage: progressInfo.value?.previewImage ?? null
+            };
+
+            if (lastPreviewKey.value != lastImageGenkey.value) {
+                lastPreviewKey.value = lastImageGenkey.value;
+                lastPreviewStep.value = -1;
+            }
+
+            const currentStep = data.state?.sampling_step ?? 0;
+            if (lastPreviewStep.value != currentStep) {
+                lastPreviewStep.value = currentStep;
+                // Only fetch preview image if set to "Image"
+                if (optionsStore.fetchGenerationProgress === "Image") {
+                    fetchPreviewImage(baseUrl);
+                }
+            }
+        } catch {
+            // progress endpoint may not be available
+        }
+    }
+
+    async function fetchPreviewImage(baseUrl: string): Promise<void> {
+        try {
+            const response = await fetch(`${baseUrl}/sdapi/v1/progress?genkey=${encodeURIComponent(lastImageGenkey.value)}`);
+            if (!response.ok) return;
+            const data = await response.json();
+            if (data.current_image && progressInfo.value) {
+                progressInfo.value.previewImage = data.current_image;
+            }
+        } catch {
+            // progress endpoint may not be available
+        }
+    }
+
+    function startProgressPolling(): void {
+        lastPreviewKey.value = '';
+        if (progressInterval.value) return;
+        // Skip polling if set to "Off"
+        if (useOptionsStore().fetchGenerationProgress === "Off") return;
+        progressInfo.value = { percentage: 0, textInfo: null, currentStep: 0, totalSteps: 0, previewImage: null };
+        progressInterval.value = setInterval(fetchProgressInfo, 1000);
+    }
+
+    function stopProgressPolling(): void {
+        if (progressInterval.value) {
+            clearInterval(progressInterval.value);
+            progressInterval.value = 0;
+        }
+        progressInfo.value = null;
+    }
+
     return {
         // Variables
         generatorType,
@@ -958,6 +1038,8 @@ export const useGeneratorStore = defineStore("generator", () => {
         queue,
         promptHistory,
         timer,
+        progressInfo,
+        progressInterval,
         lastImageGenkey,
         lastImageRecoveryUrl,
         lastImageRecoveryAvailable,
@@ -978,6 +1060,7 @@ export const useGeneratorStore = defineStore("generator", () => {
         resetStore,
         clearQueue,
         clearOutputs,
+        stopProgressPolling,
         pushToNegativeLibrary,
         removeFromNegativeLibrary,
         pushToPromptHistory,

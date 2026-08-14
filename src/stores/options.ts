@@ -3,6 +3,7 @@ import { useColorMode, useLocalStorage, type BasicColorSchema } from '@vueuse/co
 import { ref } from 'vue';
 
 type IToggle = "Enabled" | "Disabled";
+type IPreviewImageOnProgress = "Off" | "Text" | "Image";
 
 export const useOptionsStore = defineStore("options", () => {
     const options = useLocalStorage("options", ref({
@@ -15,6 +16,7 @@ export const useOptionsStore = defineStore("options", () => {
     const allowLargerParams = useLocalStorage<IToggle>("allowLargerParams", "Disabled");
     const alsoRequestAvi = useLocalStorage<IToggle>("alsoRequestAvi", "Enabled");
     const keepImageGenOnDisconnect = useLocalStorage<IToggle>("keepImageGenOnDisconnect", "Disabled");
+    const fetchGenerationProgress = useLocalStorage<IPreviewImageOnProgress>("fetchGenerationProgress", "Off");
     const autoCarousel = useLocalStorage<IToggle>("autoCarousel", "Enabled");
     const useBeta = useLocalStorage<IToggle>("useBeta", "Disabled");
     const imageDownloadType = useLocalStorage<"WEBP" | "PNG" | "JPG" | "GIF" >("imageDownloadType", "PNG")
@@ -35,6 +37,7 @@ export const useOptionsStore = defineStore("options", () => {
         allowLargerParams,
         alsoRequestAvi,
         keepImageGenOnDisconnect,
+        fetchGenerationProgress,
         autoCarousel,
         useBeta,
         imageDownloadType,

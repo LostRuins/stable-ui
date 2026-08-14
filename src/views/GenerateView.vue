@@ -327,6 +327,7 @@ handleUrlParams();
                         store.generating = false;
                         store.clearQueue();
                         store.clearLastImageGenkey();
+                        store.stopProgressPolling();
                     }"
                 >Cancel all</el-button>
             </div>
@@ -342,6 +343,12 @@ handleUrlParams();
                         :generated="store.outputs.length"
                         :total="store.queue.length"
                         :elapsed="formatEST(store.timer.seconds)"
+                        :progress-percentage="store.progressInfo?.percentage"
+                        :text-info="store.progressInfo?.textInfo"
+                        :current-step="store.progressInfo?.currentStep"
+                        :total-steps="store.progressInfo?.totalSteps"
+                        :preview-image="store.progressInfo?.previewImage"
+                        :generating="store.generating"
                         @show-generated="uiStore.showGeneratedImages = true"
                         v-if="!uiStore.showGeneratedImages && store.generating"
                     />
