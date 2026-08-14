@@ -11,6 +11,7 @@ import { DEBUG_MODE, MAX_PARALLEL_REQUESTS } from "@/constants";
 import { validateResponse } from "@/utils/validate";
 import { extractLorasFromPrompt } from "@/utils/loras";
 import { convertToBase64 } from "@/utils/base64";
+import { buildApiUrl } from "@/utils/api";
 function getDefaultStore() {
     return {
         steps: 20,
@@ -204,8 +205,7 @@ export const useGeneratorStore = defineStore("generator", () => {
     const lastImageGenkey = useLocalStorage("lastImageGenkey", "");
     const lastImageRecoveryUrl = computed(() => {
         if (!lastImageGenkey.value) return "";
-        const baseUrl = useOptionsStore().baseURL.length === 0 ? "." : useOptionsStore().baseURL.replace(/\/+$/, "");
-        return `${baseUrl}/sdapi/v1/get_last.png?genkey=${encodeURIComponent(lastImageGenkey.value)}`;
+        return buildApiUrl(useOptionsStore().baseURL, `/sdapi/v1/get_last.png?genkey=${encodeURIComponent(lastImageGenkey.value)}`);
     });
     const lastImageRecoveryAvailable = computed(() => lastImageRecoveryUrl.value !== "" && !generating.value);
 
@@ -282,8 +282,7 @@ export const useGeneratorStore = defineStore("generator", () => {
      * */
     async function fetchLoras(): Promise<any[]> {
         const optionsStore = useOptionsStore();
-        const baseUrl = optionsStore.baseURL.length === 0 ? "." : optionsStore.baseURL;
-        const response = await fetch(`${baseUrl}/sdapi/v1/loras`);
+        const response = await fetch(buildApiUrl(optionsStore.baseURL, "/sdapi/v1/loras"));
         const resJSON = await response.json();
         if (!validateResponse(response, resJSON, 200, "Failed to get available LoRAs")) return [];
         return resJSON;
@@ -748,7 +747,7 @@ export const useGeneratorStore = defineStore("generator", () => {
                 ...parameters,
                 genkey,
             };
-            const response: Response = await fetch(`${optionsStore.baseURL.length === 0 ? "." : optionsStore.baseURL}/sdapi/v1/${parameters.init_images.length > 0 ? 'img' : 'txt'}2img`, {
+            const response: Response = await fetch(buildApiUrl(optionsStore.baseURL, `/sdapi/v1/${parameters.init_images.length > 0 ? 'img' : 'txt'}2img`), {
                 method: "POST",
                 headers: {
                     'Content-Type': 'application/json'
@@ -777,7 +776,7 @@ export const useGeneratorStore = defineStore("generator", () => {
      * */
     async function updateAvailableModels() {
         const optionsStore = useOptionsStore();
-        const response = await fetch(`${optionsStore.baseURL.length === 0 ? "." : optionsStore.baseURL}/sdapi/v1/sd-models`);
+        const response = await fetch(buildApiUrl(optionsStore.baseURL, "/sdapi/v1/sd-models"));
         const resJSON: any[] = await response.json();
         if (!validateResponse(response, resJSON, 200, "Failed to get available models")) return;
         if (resJSON.length === 0) return "(No model loaded)";
@@ -804,8 +803,7 @@ export const useGeneratorStore = defineStore("generator", () => {
     // fetch endpoint information and keep a cache of the result
     async function getCachedEndpoint<T>(endpoint: string): Promise<T | null> {
         const optionsStore = useOptionsStore();
-        const baseUrl = optionsStore.baseURL.length === 0 ? "." : optionsStore.baseURL;
-        const fullUrl = (baseUrl.replace(/\/+$/, "") || ".") + "/" + endpoint.replace(/^\/+/, "");
+        const fullUrl = buildApiUrl(optionsStore.baseURL, endpoint);
         if (cacheMap.has(fullUrl)) {
             return cacheMap.get(fullUrl);
         }
@@ -933,12 +931,12 @@ export const useGeneratorStore = defineStore("generator", () => {
     // --- Progress polling ---
     const lastPreviewKey = ref("");
     const lastPreviewStep = ref(-1);
+
     async function fetchProgressInfo(): Promise<void> {
         const optionsStore = useOptionsStore();
-        const baseUrl = optionsStore.baseURL.length === 0 ? "." : optionsStore.baseURL;
         try {
             // lightweight poll for numbers
-            const response = await fetch(`${baseUrl}/sdapi/v1/progress?skip_current_image=true&genkey=${encodeURIComponent(lastImageGenkey.value)}`);
+            const response = await fetch(buildApiUrl(optionsStore.baseURL, `/sdapi/v1/progress?skip_current_image=true&genkey=${encodeURIComponent(lastImageGenkey.value)}`));
             if (!response.ok) return;
             const data = await response.json();
             if (DEBUG_MODE) console.error('progressInfo:', data);
@@ -961,7 +959,7 @@ export const useGeneratorStore = defineStore("generator", () => {
                 lastPreviewStep.value = currentStep;
                 // Only fetch preview image if set to "Image"
                 if (optionsStore.fetchGenerationProgress === "Image") {
-                    fetchPreviewImage(baseUrl);
+                    fetchPreviewImage();
                 }
             }
         } catch {
@@ -969,9 +967,10 @@ export const useGeneratorStore = defineStore("generator", () => {
         }
     }
 
-    async function fetchPreviewImage(baseUrl: string): Promise<void> {
+    async function fetchPreviewImage(): Promise<void> {
+        const optionsStore = useOptionsStore();
         try {
-            const response = await fetch(`${baseUrl}/sdapi/v1/progress?genkey=${encodeURIComponent(lastImageGenkey.value)}`);
+            const response = await fetch(buildApiUrl(optionsStore.baseURL, `/sdapi/v1/progress?genkey=${encodeURIComponent(lastImageGenkey.value)}`));
             if (!response.ok) return;
             const data = await response.json();
             if (data.current_image && progressInfo.value) {

@@ -1,9 +1,9 @@
 import { validateResponse } from "@/utils/validate";
+import { buildApiUrl } from "@/utils/api";
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import { useOptionsStore } from "./options";
 import { useUIStore } from "./ui";
-import type { get } from "http";
 
 export interface InterrogationInfo {
     status?: string;
@@ -27,7 +27,7 @@ export const useInterrogationStore = defineStore("interrogate", () => {
         const { source_image } = currentInterrogation.value;
         if (!source_image) return onError("Failed to get interrogation ID: No image supplied.");
         interrogating.value = true;
-        const response = await fetch(`${optionsStore.baseURL.length === 0 ? "." : optionsStore.baseURL}/sdapi/v1/interrogate`, {
+        const response = await fetch(buildApiUrl(optionsStore.baseURL, "/sdapi/v1/interrogate"), {
             method: "POST",
             headers: {
                 'Content-Type': 'application/json',
