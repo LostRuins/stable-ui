@@ -58,10 +58,10 @@ defineEmits(["showGenerated"]);
             <span v-else>Generating{{ellipsis}}{{'&nbsp;'.repeat(3 - ellipsis.length)}}<br><sup>{{ elapsed }}</sup></span>
         </div>
         <div v-if="previewImage" class="preview-container">
-            <img 
-                :src="`data:image/png;base64,${previewImage}`" 
-                class="preview-img" 
-                alt="Generation Preview" 
+            <img
+                :src="`data:image/png;base64,${previewImage}`"
+                class="preview-img"
+                alt="Generation Preview"
             />
         </div>
 
@@ -89,6 +89,8 @@ defineEmits(["showGenerated"]);
 .preview-img {
     max-width: 200px;
     max-height: 200px;
+    min-width: 64px;
+    min-height: 64px;
     width: auto;
     height: auto;
     border-radius: 8px;
