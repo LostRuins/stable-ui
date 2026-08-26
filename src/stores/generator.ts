@@ -85,6 +85,16 @@ type IReferenceImage = {
     base64: string;
 }
 
+/**
+ * A row of the non-persisted LoRA list on the generation screen
+ * */
+type ILoraListItem = {
+    /** Selected LoRA (the `path` from GET /sdapi/v1/loras, empty until one is picked) */
+    lora: string;
+    /** LoRA multiplier, sent in the lora field of the generation parameters */
+    multiplier: number;
+}
+
 interface IMultiSelect {
     sampler: IMultiSelectItem<string>;
     steps: IMultiSelectItem<number>;
@@ -264,6 +274,7 @@ export const useGeneratorStore = defineStore("generator", () => {
         videoStartFrame.value = null;
         videoEndFrame.value = null;
         outputs.value = [];
+        loraList.value = [];
         useUIStore().showGeneratedImages = false;
         clearQueue();
         clearLastImageGenkey();
@@ -327,20 +338,50 @@ export const useGeneratorStore = defineStore("generator", () => {
 
         const availableLoras = (
             promptsAndLoras.some(ps => ps.extractedLoras.length > 0)
+                || loraList.value.some(row => row.lora && row.lora.trim() !== "")
             ? await fetchLoras() : []);
 
+        // build the structured lora entries from the (non-persisted) LoRA list on the generation screen;
+        // rows without a selected LoRA are ignored
+        const loraListRequests = loraList.value
+            .filter(row => row.lora && row.lora.trim() !== "")
+            .flatMap(row => {
+                const match = availableLoras.find(al => al.name === row.lora || al.path === row.lora);
+                // the lora field only accepts the LoRA's path, so skip entries that can't be resolved
+                if (!match) return [];
+                const multiplier = Number(row.multiplier);
+                return [{ path: match.path, multiplier: isNaN(multiplier) ? 0 : multiplier }];
+            });
+
+        // merge entries by resolved path and is_high_noise, accumulating the multipliers (the server behaves
+        // the same way with duplicate entries); entries with the same path but different is_high_noise are
+        // kept separate, as they apply to different generation phases
+        const mergeLoraEntries = (entries: { path: string; multiplier: number; is_high_noise?: boolean }[]) => {
+            const merged = new Map<string, { path: string; multiplier: number; is_high_noise?: boolean }>();
+            for (const entry of entries) {
+                const key = `${entry.path}\u0000${entry.is_high_noise ? 1 : 0}`;
+                const existing = merged.get(key);
+                if (existing) {
+                    existing.multiplier = Math.round((existing.multiplier + entry.multiplier) * 10000) / 10000;
+                } else {
+                    merged.set(key, { ...entry });
+                }
+            }
+            return [...merged.values()];
+        };
+
         const processedPrompts = promptsAndLoras.map(({ extractedLoras, ...ps }) => {
-            const loraRequest = (
-                extractedLoras.length > 0 && availableLoras.length > 0 ?
-                    extractedLoras.map(l => {
-                        const match = availableLoras.find(al => al.name === l.name || al.path === l.name);
-                        return {
-                            path: match ? match.path : l.name,
-                            multiplier: l.multiplier,
-                            ...(l.is_high_noise ? { is_high_noise: true } : {}),
-                        };
-                    }) : []
-            );
+            const promptLoraRequests = extractedLoras.flatMap(l => {
+                const match = availableLoras.find(al => al.name === l.name || al.path === l.name);
+                // the lora field only accepts the LoRA's path, so skip entries that can't be resolved
+                return match ? [{
+                    path: match.path,
+                    multiplier: l.multiplier,
+                    ...(l.is_high_noise ? { is_high_noise: true } : {}),
+                }] : [];
+            });
+            // no overlap with the LoRA list: it is simply appended; overlapping entries accumulate
+            const loraRequest = mergeLoraEntries([...promptLoraRequests, ...loraListRequests]);
 
             return {
                 ...ps,
@@ -860,6 +901,17 @@ export const useGeneratorStore = defineStore("generator", () => {
         return false;
     }
 
+    // --- Non-persisted LoRA list (name + multiplier pairs) on the generation screen ---
+    const loraList = ref<ILoraListItem[]>([]);
+
+    function addLoraRow() {
+        loraList.value = [...loraList.value, { lora: "", multiplier: 0 }];
+    }
+
+    function removeLoraRow(index: number) {
+        loraList.value = loraList.value.filter((_, i) => i !== index);
+    }
+
     const referenceImages = ref<IReferenceImage[]>([]);
 
     const videoStartFrame = ref<IReferenceImage | null>(null);
@@ -1056,6 +1108,9 @@ export const useGeneratorStore = defineStore("generator", () => {
         referenceImages,
         videoStartFrame,
         videoEndFrame,
+        loraList,
+        addLoraRow,
+        removeLoraRow,
         negativePrompt,
         generating,
         negativePromptLibrary,
@@ -1119,6 +1174,7 @@ export const useGeneratorStore = defineStore("generator", () => {
         clearVideoEndFrame,
         getAvailableSamplers,
         getAvailableSchedulers,
+        fetchLoras,
         cacheVersion,
         invalidateApiCaches,
         getCachedEndpoint

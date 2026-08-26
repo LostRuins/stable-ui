@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive } from 'vue';
+import { computed, reactive, ref } from 'vue';
 import { useGeneratorStore, getNewSeed } from '@/stores/generator';
 import {
     type FormRules,
@@ -13,7 +13,10 @@ import {
     ElTooltip,
     ElRow,
     ElCol,
-    ElImage
+    ElImage,
+    ElSelect,
+    ElOption,
+    ElInputNumber
 } from 'element-plus';
 import {
     Comment,
@@ -23,6 +26,7 @@ import {
     ArrowUp,
     ArrowDown,
     Delete,
+    Plus,
 } from '@element-plus/icons-vue';
 import BrushFilled from '../components/icons/BrushFilled.vue';
 import ImageSearch from '../components/icons/ImageSearch.vue';
@@ -40,7 +44,6 @@ import { useCanvasStore } from '@/stores/canvas';
 import { breakpointsTailwind, computedAsync, useBreakpoints } from '@vueuse/core';
 import handleUrlParams from "@/router/handleUrlParams";
 import InterrogationView from '@/components/InterrogationView.vue';
-import { useOptionsStore } from '@/stores/options';
 import { formatSeconds } from '@/utils/format';
 
 const breakpoints = useBreakpoints(breakpointsTailwind);
@@ -49,7 +52,6 @@ const isMobile = breakpoints.smallerOrEqual('md');
 const store = useGeneratorStore();
 const uiStore = useUIStore();
 const canvasStore = useCanvasStore();
-const optionsStore = useOptionsStore();
 
 const availableSamplers = computedAsync(async () => {
     const _ignore     = store.cacheVersion; // force update when cached value changes
@@ -66,6 +68,23 @@ const availableSchedulers = computedAsync(async () => {
     if (schedulerList.length === 0) return [];
     return updateCurrentScheduler(schedulerList);
 }, [])
+
+// non-persisted LoRA list (name + multiplier pairs) on the generation screen
+const loraListOpen = ref<"" | "lora-list">("");
+const availableLoras = computedAsync(async () => {
+    const _ignore = store.cacheVersion; // force update when cached value changes
+    return store.fetchLoras();
+}, [])
+const loraSummary = computed(() => {
+    const enabled = store.loraList.filter(row => {
+        const multiplier = Number(row.multiplier);
+        return row.lora && row.lora.trim() !== "" && !isNaN(multiplier) && multiplier !== 0;
+    }).length;
+    const available = availableLoras.value.length;
+    return enabled === 0
+        ? `${available} available`
+        : `${enabled} enabled, ${available} available`;
+});
 
 const rules = reactive<FormRules>({
     prompt: [{
@@ -220,6 +239,37 @@ handleUrlParams();
                 <form-slider label="CLIP Skip(s)"          prop="clipSkips"       v-model="store.multiSelect.clipSkip.selected"    :min="store.minClipSkip"      :max="store.maxClipSkip"   info="Multi-select enabled. Last layers of CLIP to ignore. For most situations this can be left alone." multiple v-if="store.multiSelect.clipSkip.state === 'Multiple'" />
                 <form-slider label="CLIP Skip"             prop="clipSkip"        v-model="store.params.clip_skip"                 :min="store.minClipSkip"      :max="store.maxClipSkip"   info="Last layers of CLIP to ignore. For most situations this can be left alone." v-else-if="store.multiSelect.clipSkip.state === 'Enabled'" />
                 <form-slider label="Init Strength"         prop="denoise"         v-model="store.params.denoising_strength"        :min="store.minDenoise"       :max="store.maxDenoise"    :step="0.01" info="The final image will diverge from the starting image at higher values. 0=unchanged, 1=fullychanged" v-if="store.sourceGeneratorTypes.includes(store.generatorType)" />
+                <el-collapse v-model="loraListOpen" class="lora-list-collapse">
+                    <el-collapse-item name="lora-list">
+                        <template #title>
+                            <span class="lora-list-title">LoRAs</span>
+                            <span class="lora-list-summary">{{ loraSummary }}</span>
+                        </template>
+                        <div v-if="availableLoras.length === 0" class="lora-list-hint">
+                            No LoRAs were returned by the server.
+                        </div>
+                        <div v-for="(row, index) in store.loraList" :key="index" class="lora-list-row">
+                            <el-select v-model="row.lora" class="lora-list-select" filterable placeholder="Select a LoRA">
+                                <el-option value="" />
+                                <el-option
+                                    v-for="lora in availableLoras"
+                                    :key="lora.path"
+                                    :label="lora.name"
+                                    :value="lora.path"
+                                />
+                            </el-select>
+                            <el-input-number v-model="row.multiplier" :step="0.05" :precision="2" controls-position="right" />
+                            <el-tooltip content="Remove" placement="top">
+                                <el-button :icon="Delete" plain @click="store.removeLoraRow(index)" />
+                            </el-tooltip>
+                        </div>
+                        <div class="lora-list-add">
+                            <el-button :icon="Plus" @click="store.addLoraRow()" :disabled="availableLoras.length === 0">
+                                Add LoRA
+                            </el-button>
+                        </div>
+                    </el-collapse-item>
+                </el-collapse>
                 <form-slider label="Video Frames"          prop="frames"          v-model="store.params.frames"                    :min="store.minFrames"        :max="store.maxFrames"     info="Number of consecutive video frames to generate (Video models only). More frames increases memory usage."/>
                 <form-slider label="FPS"                   prop="fps"             v-model="store.params.fps"                       :min="store.minFps"           :max="store.maxFps"        :disabled="store.params.frames <= 1" info="Frames per second for video generation." v-if="store.params.frames > 1" />
                 <div
@@ -610,6 +660,44 @@ handleUrlParams();
     border-radius: 6px;
     color: var(--el-text-color-secondary);
     font-size: 13px;
+}
+
+.lora-list-collapse {
+    width: 100%;
+    margin: 14px 0;
+}
+
+.lora-list-title {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.lora-list-summary {
+    margin-left: 8px;
+    font-size: 13px;
+    color: var(--el-text-color-secondary);
+}
+
+.lora-list-hint {
+    padding: 4px 0;
+    color: var(--el-text-color-secondary);
+    font-size: 13px;
+}
+
+.lora-list-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+}
+
+.lora-list-select {
+    flex: 1;
+    min-width: 140px;
+}
+
+.lora-list-add {
+    padding: 6px 0;
 }
 
 .video-frame-selectors {
