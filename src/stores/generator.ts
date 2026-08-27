@@ -291,14 +291,15 @@ export const useGeneratorStore = defineStore("generator", () => {
     }
 
     /**
-     * Fetches available LoRAs from the server
+     * Fetches available LoRAs from the server. The result is cached per server
+     * baseURL (see getCachedEndpoint), so repeated calls (the generation screen's
+     * lazy panel fetch and generateImage) share a single round-trip. Resolves to
+     * the list (which may be empty), or to null if the request failed (a failed
+     * fetch is not cached, so the next attempt retries)
      * */
-    async function fetchLoras(): Promise<any[]> {
-        const optionsStore = useOptionsStore();
-        const response = await fetch(buildApiUrl(optionsStore.baseURL, "/sdapi/v1/loras"));
-        const resJSON = await response.json();
-        if (!validateResponse(response, resJSON, 200, "Failed to get available LoRAs")) return [];
-        return resJSON;
+    async function fetchLoras(): Promise<any[] | null> {
+        const result = await getCachedEndpoint<any[]>("/sdapi/v1/loras");
+        return Array.isArray(result) ? result : null;
     }
 
     /**
@@ -339,7 +340,7 @@ export const useGeneratorStore = defineStore("generator", () => {
         const availableLoras = (
             promptsAndLoras.some(ps => ps.extractedLoras.length > 0)
                 || loraList.value.some(row => row.lora && row.lora.trim() !== "")
-            ? await fetchLoras() : []);
+            ? (await fetchLoras() ?? []) : []);
 
         // build the structured lora entries from the (non-persisted) LoRA list on the generation screen;
         // rows without a selected LoRA are ignored

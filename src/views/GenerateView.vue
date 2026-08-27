@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 import { useGeneratorStore, getNewSeed } from '@/stores/generator';
 import {
     type FormRules,
@@ -69,21 +69,44 @@ const availableSchedulers = computedAsync(async () => {
     return updateCurrentScheduler(schedulerList);
 }, [])
 
-// non-persisted LoRA list (name + multiplier pairs) on the generation screen
+// non-persisted LoRA list (name + multiplier pairs) on the generation screen.
+// the server's LoRA list is fetched lazily: only if the panel is unfolded or
+// at least one LoRA row is enabled, to avoid the round-trip by default
 const loraListOpen = ref<"" | "lora-list">("");
-const availableLoras = computedAsync(async () => {
-    const _ignore = store.cacheVersion; // force update when cached value changes
-    return store.fetchLoras();
-}, [])
+const availableLoras = ref<any[]>([]);
+const loraListLoaded = ref(false);
+const loraListLoading = ref(false);
+
+function loadLoraList() {
+    if (loraListLoaded.value || loraListLoading.value) return;
+    loraListLoading.value = true;
+    store.fetchLoras().then(list => {
+        // a failed fetch (null) keeps the list unloaded, so the next attempt retries
+        if (list !== null) {
+            availableLoras.value = list;
+            loraListLoaded.value = true;
+        }
+    }).finally(() => { loraListLoading.value = false; });
+}
+
+const loraEnabledCount = computed(() => store.loraList.filter(row => {
+    const multiplier = Number(row.multiplier);
+    return row.lora && row.lora.trim() !== "" && !isNaN(multiplier) && multiplier !== 0;
+}).length);
+
+watch(
+    () => loraListOpen.value !== "" || loraEnabledCount.value > 0,
+    needed => { if (needed) loadLoraList(); },
+    { immediate: true },
+);
+
 const loraSummary = computed(() => {
-    const enabled = store.loraList.filter(row => {
-        const multiplier = Number(row.multiplier);
-        return row.lora && row.lora.trim() !== "" && !isNaN(multiplier) && multiplier !== 0;
-    }).length;
+    const enabled = loraEnabledCount.value;
     const available = availableLoras.value.length;
-    return enabled === 0
-        ? `${available} available`
-        : `${enabled} enabled, ${available} available`;
+    if (enabled === 0) return loraListLoaded.value ? `${available} available` : "";
+    return loraListLoaded.value
+        ? `${enabled} enabled, ${available} available`
+        : `${enabled} enabled`;
 });
 
 const rules = reactive<FormRules>({
@@ -245,7 +268,7 @@ handleUrlParams();
                             <span class="lora-list-title">LoRAs</span>
                             <span class="lora-list-summary">{{ loraSummary }}</span>
                         </template>
-                        <div v-if="availableLoras.length === 0" class="lora-list-hint">
+                        <div v-if="loraListLoaded && availableLoras.length === 0" class="lora-list-hint">
                             No LoRAs were returned by the server.
                         </div>
                         <div v-for="(row, index) in store.loraList" :key="index" class="lora-list-row">
