@@ -10,6 +10,7 @@ import { useLocalStorage } from "@vueuse/core";
 import { DEBUG_MODE, MAX_PARALLEL_REQUESTS } from "@/constants";
 import { validateResponse } from "@/utils/validate";
 import { extractLorasFromPrompt } from "@/utils/loras";
+import { parsePromptSegments, expandPromptSegments } from "@/utils/expansions";
 import { convertToBase64 } from "@/utils/base64";
 import { buildApiUrl } from "@/utils/api";
 function getDefaultStore() {
@@ -711,32 +712,15 @@ export const useGeneratorStore = defineStore("generator", () => {
     }
 
     /**
-     * Returns all prompt matrix combinations
+     * Returns all prompt matrix combinations. Expansion is two-phase: the
+     * prompt is parsed into literal/expansion segments (an expansion ends at
+     * the first `}`, no nesting; a stray or unclosed brace is literal), then
+     * the segments are expanded via Cartesian product and concatenated — no
+     * string replacement, so options are used verbatim.
      */
     function promptMatrix() {
         const prompt = getFullPrompt();
-        const matrixMatches = prompt.match(/\{(.*?)\}/g) || [];
-        if (matrixMatches.length === 0) return [prompt];
-        let prompts: string[] = [];
-        matrixMatches.forEach(matrix => {
-            const newPrompts: string[] = [];
-            const options = matrix.replace("{", "").replace("}", "").split("|");
-            if (prompts.length === 0) {
-                options.forEach(option => {
-                    const newPrompt = prompt.replace(matrix, option);
-                    newPrompts.push(newPrompt);
-                });
-            } else {
-                prompts.forEach(previousPrompt => {
-                    options.forEach(option => {
-                        const newPrompt = previousPrompt.replace(matrix, option);
-                        newPrompts.push(newPrompt);
-                    });
-                });
-            }
-            prompts = [...newPrompts];
-        });
-        return prompts;
+        return expandPromptSegments(parsePromptSegments(prompt));
     }
 
     /**
