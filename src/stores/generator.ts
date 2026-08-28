@@ -321,17 +321,17 @@ export const useGeneratorStore = defineStore("generator", () => {
         // Cache parameters so the user can't mutate the output data while it's generating
         const paramsCached: any[] = [];
 
-        // split "###" and {|} syntax
+        // split "###" and {|} syntax; the negative prompt is never scanned for LoRA tags, so any
+        // tag inside it is inert and is sent and stored as-is
         const processedRawPrompts = promptMatrix().map(ps => {
             const p = ps.split(" ### ");
             return {
-                full_prompt: ps,
                 prompt: p[0],
                 negative_prompt: p[1] || ""
             };
         });
 
-        // extract <lora:name:value> and build the lora field
+        // extract <lora:name:value> from the positive prompt
         const promptsAndLoras = processedRawPrompts.map(ps => {
             const [cleanedPrompt, extractedLoras] = extractLorasFromPrompt(ps.prompt);
             return { ...ps, prompt: cleanedPrompt, extractedLoras: extractedLoras };
@@ -342,25 +342,25 @@ export const useGeneratorStore = defineStore("generator", () => {
                 || loraList.value.some(row => row.lora && row.lora.trim() !== "")
             ? (await fetchLoras() ?? []) : []);
 
-        // build the structured lora entries from the (non-persisted) LoRA list on the generation screen;
-        // rows without a selected LoRA are ignored
-        const loraListRequests = loraList.value
+        // the raw LoRA entries from the (non-persisted) LoRA list on the generation screen; rows
+        // without a selected LoRA are ignored. The entry's name is the LoRA's display name when the
+        // row can be resolved, the row's raw value otherwise (preserved as an inert tag)
+        const loraListEntries = loraList.value
             .filter(row => row.lora && row.lora.trim() !== "")
             .flatMap(row => {
                 const match = availableLoras.find(al => al.name === row.lora || al.path === row.lora);
-                // the lora field only accepts the LoRA's path, so skip entries that can't be resolved
-                if (!match) return [];
                 const multiplier = Number(row.multiplier);
-                return [{ path: match.path, multiplier: isNaN(multiplier) ? 0 : multiplier }];
+                return [{ name: match ? match.name : row.lora, multiplier: isNaN(multiplier) ? 0 : multiplier }];
             });
 
-        // merge entries by resolved path and is_high_noise, accumulating the multipliers (the server behaves
-        // the same way with duplicate entries); entries with the same path but different is_high_noise are
-        // kept separate, as they apply to different generation phases
-        const mergeLoraEntries = (entries: { path: string; multiplier: number; is_high_noise?: boolean }[]) => {
-            const merged = new Map<string, { path: string; multiplier: number; is_high_noise?: boolean }>();
+        // merge entries by (name, is_high_noise), accumulating the multipliers (the server accumulates
+        // the same way for duplicate entries); entries with different is_high_noise are kept separate,
+        // as they apply to different generation phases
+        const mergeLoraEntries = (entries: { name: string; multiplier: number; is_high_noise?: boolean }[]) => {
+            const merged = new Map<string, { name: string; multiplier: number; is_high_noise?: boolean }>();
             for (const entry of entries) {
-                const key = `${entry.path}\u0000${entry.is_high_noise ? 1 : 0}`;
+                if (!entry.name || entry.name.trim() === "") continue;
+                const key = `${entry.name}\u0000${entry.is_high_noise ? 1 : 0}`;
                 const existing = merged.get(key);
                 if (existing) {
                     existing.multiplier = Math.round((existing.multiplier + entry.multiplier) * 10000) / 10000;
@@ -372,20 +372,47 @@ export const useGeneratorStore = defineStore("generator", () => {
         };
 
         const processedPrompts = promptsAndLoras.map(({ extractedLoras, ...ps }) => {
-            const promptLoraRequests = extractedLoras.flatMap(l => {
-                const match = availableLoras.find(al => al.name === l.name || al.path === l.name);
-                // the lora field only accepts the LoRA's path, so skip entries that can't be resolved
-                return match ? [{
-                    path: match.path,
+            // R: the raw LoRA list (the prompt's tags first, then the screen's rows) — everything that
+            // was requested, including zero-multiplier and unresolvable entries, which are preserved
+            // as inert <lora:> tags in the image metadata, but not sent to the server
+            const rawLoraEntries = mergeLoraEntries([
+                ...extractedLoras.map(l => ({
+                    name: l.name,
                     multiplier: l.multiplier,
                     ...(l.is_high_noise ? { is_high_noise: true } : {}),
+                })),
+                ...loraListEntries,
+            ]);
+
+            // G: what is actually sent to the server — zero-multiplier and unresolvable entries are
+            // filtered out, and each name is resolved to the LoRA's path; two names resolving to the
+            // same path are both sent (the server accumulates duplicate paths)
+            const loraRequest = rawLoraEntries.flatMap(entry => {
+                if (entry.multiplier === 0) return [];
+                const match = availableLoras.find(al => al.name === entry.name || al.path === entry.name);
+                return match ? [{
+                    path: match.path,
+                    multiplier: entry.multiplier,
+                    ...(entry.is_high_noise ? { is_high_noise: true } : {}),
                 }] : [];
             });
-            // no overlap with the LoRA list: it is simply appended; overlapping entries accumulate
-            const loraRequest = mergeLoraEntries([...promptLoraRequests, ...loraListRequests]);
+
+            // the full prompt stored in the image metadata: the tag-free positive prompt with the raw
+            // LoRA list R appended as <lora:> tags (so a re-queued image re-requests the same LoRAs),
+            // then the untouched negative prompt. Space runs left behind by tag removal are collapsed
+            // (metadata only, the request prompt is unaffected), so the stored prompt stays clean and
+            // stable across re-queue/regeneration cycles
+            const loraTags = rawLoraEntries.map(e =>
+                `<lora:${e.is_high_noise ? "|high_noise|" : ""}${e.name}:${String(Math.round(e.multiplier * 10000) / 10000)}>`);
+            const cleanedPositive = loraTags.length > 0 ? ps.prompt.replace(/ +/g, " ").trim() : ps.prompt;
+            const taggedPrompt = [cleanedPositive, loraTags.join(" ")]
+                .filter(s => s !== "")
+                .join(" ");
+            const full_prompt = ps.negative_prompt !== "" ? `${taggedPrompt} ### ${ps.negative_prompt}` : taggedPrompt;
 
             return {
                 ...ps,
+                full_prompt,
                 ...(loraRequest.length > 0 ? { lora: loraRequest } : {})
             };
         });
@@ -698,6 +725,20 @@ export const useGeneratorStore = defineStore("generator", () => {
             const splitPrompt = data.prompt.split(" ### ");
             prompt.value = splitPrompt[0];
             negativePrompt.value = splitPrompt[1] || "";
+            // the restored prompt carries the stored <lora:> tags; zero any matching row of the
+            // non-persisted LoRA list, so regenerating doesn't apply the row's multiplier on top of
+            // the tag it was stored from
+            const [, restoredLoras] = extractLorasFromPrompt(prompt.value);
+            if (restoredLoras.length > 0) {
+                const availableLoras = (await fetchLoras()) ?? [];
+                for (const row of loraList.value) {
+                    if (!row.lora || row.lora.trim() === "") continue;
+                    const matches = restoredLoras.some(tag =>
+                        tag.name === row.lora
+                        || availableLoras.some(al => al.name === tag.name && al.path === row.lora));
+                    if (matches) row.multiplier = 0;
+                }
+            }
         }
         if (data.sampler_name) {
             params.value.sampler_name = data.sampler_name;
