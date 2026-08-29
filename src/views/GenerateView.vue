@@ -109,6 +109,26 @@ const loraSummary = computed(() => {
         : `${enabled} enabled`;
 });
 
+const hasSelectedLora = (row: { lora: string }) => !!row.lora && row.lora.trim() !== "";
+const loraNamedCount = computed(() => store.loraList.filter(hasSelectedLora).length);
+
+// moves the rows with a selected LoRA out of the (non-persisted) LoRA list and appends
+// them to the positive prompt as <lora:name:weight> tags; rows without a selection stay
+function moveLorasToPrompt() {
+    const moving = store.loraList.filter(hasSelectedLora);
+    if (moving.length === 0) return;
+    const tags = moving.map(row => {
+        // the tag carries the LoRA's display name when the server list is loaded, the row's
+        // raw (path) value otherwise; both resolve later against GET /sdapi/v1/loras
+        const match = availableLoras.value.find(al => al.path === row.lora || al.name === row.lora);
+        const multiplier = Number(row.multiplier);
+        const weight = isNaN(multiplier) ? 0 : Math.round(multiplier * 10000) / 10000;
+        return `<lora:${match ? match.name : row.lora}:${weight}>`;
+    });
+    store.loraList = store.loraList.filter(row => !hasSelectedLora(row));
+    store.prompt = store.prompt === "" ? tags.join(" ") : `${store.prompt} ${tags.join(" ")}`;
+}
+
 const rules = reactive<FormRules>({
     prompt: [{
         required: true,
@@ -289,6 +309,9 @@ handleUrlParams();
                         <div class="lora-list-add">
                             <el-button :icon="Plus" @click="store.addLoraRow()" :disabled="availableLoras.length === 0">
                                 Add LoRA
+                            </el-button>
+                            <el-button :icon="ArrowUp" @click="moveLorasToPrompt" :disabled="loraNamedCount === 0">
+                                To Prompt
                             </el-button>
                         </div>
                     </el-collapse-item>
