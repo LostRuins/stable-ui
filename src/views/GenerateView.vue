@@ -116,6 +116,14 @@ function selectExtraImages() {
     document.getElementById('extra_image_input')?.click();
 }
 
+function selectVideoStartFrame() {
+    document.getElementById('video_start_frame_input')?.click();
+}
+
+function selectVideoEndFrame() {
+    document.getElementById('video_end_frame_input')?.click();
+}
+
 function isReferenceImage(image: { dataUrl?: string }) {
     return image.dataUrl?.startsWith('data:image');
 }
@@ -216,6 +224,7 @@ handleUrlParams();
                 <form-slider label="FPS"                   prop="fps"             v-model="store.params.fps"                       :min="store.minFps"           :max="store.maxFps"        :disabled="store.params.frames <= 1" info="Frames per second for video generation." v-if="store.params.frames > 1" />
                 <div
                     class="reference-images"
+                    v-if="store.generatorType === 'Text2Img'"
                     @dragover.prevent
                     @drop.prevent="store.setExtraImage($event)"
                 >
@@ -293,13 +302,92 @@ handleUrlParams();
                         No reference images selected.
                     </div>
                 </div>
+                <div class="video-frame-selectors" v-if="store.generatorType === 'Text2Img' && store.params.frames > 1">
+                    <div class="video-frame-selector">
+                        <input
+                            class="reference-images-input"
+                            type="file"
+                            id="video_start_frame_input"
+                            @change="store.setVideoStartFrame($event)"
+                            accept="image/*"
+                        />
+                        <span class="video-frame-label">Video Start Frame</span>
+                        <el-image
+                            v-if="store.videoStartFrame"
+                            class="reference-image-thumb"
+                            :src="store.videoStartFrame.dataUrl"
+                            fit="cover"
+                            preview-teleported
+                        />
+                        <div class="reference-image-thumb video-frame-thumb-empty" v-else></div>
+                        <span
+                            class="video-frame-name"
+                            :title="store.videoStartFrame?.name || 'No image selected'"
+                        >
+                            {{ store.videoStartFrame?.name || 'No image selected' }}
+                        </span>
+                        <div class="video-frame-actions">
+                            <el-button @click="selectVideoStartFrame">
+                                Select Image
+                            </el-button>
+                            <el-tooltip content="Remove" placement="top">
+                                <el-button
+                                    class="small-btn"
+                                    type="danger"
+                                    :icon="Delete"
+                                    plain
+                                    :disabled="!store.videoStartFrame"
+                                    @click="store.clearVideoStartFrame()"
+                                />
+                            </el-tooltip>
+                        </div>
+                    </div>
+                    <div class="video-frame-selector">
+                        <input
+                            class="reference-images-input"
+                            type="file"
+                            id="video_end_frame_input"
+                            @change="store.setVideoEndFrame($event)"
+                            accept="image/*"
+                        />
+                        <span class="video-frame-label">Video End Frame</span>
+                        <el-image
+                            v-if="store.videoEndFrame"
+                            class="reference-image-thumb"
+                            :src="store.videoEndFrame.dataUrl"
+                            fit="cover"
+                            preview-teleported
+                        />
+                        <div class="reference-image-thumb video-frame-thumb-empty" v-else></div>
+                        <span
+                            class="video-frame-name"
+                            :title="store.videoEndFrame?.name || 'No image selected'"
+                        >
+                            {{ store.videoEndFrame?.name || 'No image selected' }}
+                        </span>
+                        <div class="video-frame-actions">
+                            <el-button @click="selectVideoEndFrame">
+                                Select Image
+                            </el-button>
+                            <el-tooltip content="Remove" placement="top">
+                                <el-button
+                                    class="small-btn"
+                                    type="danger"
+                                    :icon="Delete"
+                                    plain
+                                    :disabled="!store.videoEndFrame"
+                                    @click="store.clearVideoEndFrame()"
+                                />
+                            </el-tooltip>
+                        </div>
+                    </div>
+                </div>
                 <el-row>
                     <el-col :span="isMobile ? 24 : 12">
                         <form-switch label="ESRGAN Upscale"    prop="enable_hr"   v-model="store.params.enable_hr"    info="Enable upscale with ESRGAN." />
                     </el-col>
                     <el-col :span="isMobile ? 24 : 12">
                         <form-switch label="Send as RefImg"    prop="send_as_refimg"   v-model="store.params.send_as_refimg"  v-if="store.generatorType === 'Img2Img'"  info="Instead of regular Img2Img, send the image as a reference image for edit models." />
-                        <form-switch label="Reverse RefImg"    prop="reverse_refimg"   v-model="store.params.reverse_refimg"  v-if="store.generatorType === 'Img2Img' && store.params.send_as_refimg && store.params.frames>1"  info="Use the reference image as the final frame instead of the first frame." />
                     </el-col>
                 </el-row>
             </div>
@@ -524,6 +612,52 @@ handleUrlParams();
     font-size: 13px;
 }
 
+.video-frame-selectors {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 14px 0;
+}
+
+.video-frame-selector {
+    display: grid;
+    grid-template-columns: 140px 48px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    min-height: 58px;
+    padding: 6px 8px;
+    border: 1px solid var(--el-border-color);
+    border-radius: 6px;
+    background: var(--el-fill-color-blank);
+}
+
+.video-frame-label {
+    font-size: 14px;
+    color: var(--el-text-color-regular);
+}
+
+.video-frame-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+    color: var(--el-text-color-secondary);
+}
+
+.video-frame-thumb-empty {
+    background: var(--el-fill-color-light);
+}
+
+.video-frame-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.video-frame-actions .el-button + .el-button {
+    margin-left: 0;
+}
+
 .image {
     grid-area: image;
     flex-direction: column;
@@ -590,6 +724,10 @@ handleUrlParams();
         flex-wrap: wrap;
     }
 
+    .video-frame-selector {
+        grid-template-columns: 130px 44px minmax(0, 1fr) auto;
+    }
+
     .main {
         flex-wrap: wrap;
         gap: 5px;
@@ -648,6 +786,24 @@ handleUrlParams();
     .reference-image-thumb {
         width: 44px;
         height: 44px;
+    }
+
+    .video-frame-selector {
+        grid-template-columns: 1fr 44px;
+    }
+
+    .video-frame-label {
+        grid-column: 1 / -1;
+    }
+
+    .video-frame-name {
+        min-width: 0;
+    }
+
+    .video-frame-actions {
+        grid-column: 1 / -1;
+        justify-content: flex-end;
+        width: 100%;
     }
 }
 

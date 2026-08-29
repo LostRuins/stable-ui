@@ -28,7 +28,6 @@ function getDefaultStore() {
         fps: 16,
         enable_hr: false,
         send_as_refimg: true,
-        reverse_refimg: false,
         scheduler: "default",
     }
 }
@@ -261,6 +260,8 @@ export const useGeneratorStore = defineStore("generator", () => {
         params.value = getDefaultStore();
         inpainting.value = getDefaultImageProps();
         img2img.value = getDefaultImageProps();
+        videoStartFrame.value = null;
+        videoEndFrame.value = null;
         outputs.value = [];
         useUIStore().showGeneratedImages = false;
         clearQueue();
@@ -325,7 +326,7 @@ export const useGeneratorStore = defineStore("generator", () => {
 
         const availableLoras = (
             promptsAndLoras.some(ps => ps.extractedLoras.length > 0)
-            ? await fetchLoras() : []);
+                ? await fetchLoras() : []);
 
         const processedPrompts = promptsAndLoras.map(({ extractedLoras, ...ps }) => {
             const loraRequest = (
@@ -396,13 +397,11 @@ export const useGeneratorStore = defineStore("generator", () => {
         for (const combo of combinations) {
             const { promptVariant: { full_prompt, ...promptParams }, ...comboParams } = combo;
             const sendAsRefimg = type === "Img2Img" ? currentParams.send_as_refimg : false;
-            const reverseRefimg = (sendAsRefimg && currentParams.frames>1) ? currentParams.reverse_refimg : false;
-            let newgen:any = {
+            const newgen:any = {
                 prompt: full_prompt,
                 params: {
                     ...currentParams,
                     send_as_refimg: sendAsRefimg,
-                    reverse_refimg: reverseRefimg,
                     ...comboParams,
                     ...promptParams,
                     init_images: sourceImage ? [ sourceImage.split(",")[1] ] : [],
@@ -433,10 +432,16 @@ export const useGeneratorStore = defineStore("generator", () => {
             {
                 newgen.params["fps"] = Math.min(maxFps.value, Math.max(minFps.value, Math.round(Number(newgen.params["fps"]) || getDefaultStore().fps)));
             }
-            const referenceBase64Images = referenceImages.value.map(image => image.base64);
+            const allowReferenceImages = type === "Text2Img";
+            const referenceBase64Images = allowReferenceImages ? referenceImages.value.map(image => image.base64) : [];
             if(referenceBase64Images.length>0)
             {
                 newgen.params["extra_images"] = referenceBase64Images;
+            }
+            if(allowReferenceImages && newgen.params["frames"] && newgen.params["frames"]>1)
+            {
+                if(videoStartFrame.value) newgen.params["video_start_frame"] = videoStartFrame.value.base64;
+                if(videoEndFrame.value) newgen.params["video_end_frame"] = videoEndFrame.value.base64;
             }
             if(useOptionsStore().alsoRequestAvi === "Enabled" && newgen.params["frames"] && newgen.params["frames"]>1)
             {
@@ -543,7 +548,7 @@ export const useGeneratorStore = defineStore("generator", () => {
                 const mime = (animated?'gif':'png');
                 const extra_avi = (image.extra_data?(`data:video/avi;base64,${image.extra_data}`):"");
                 const final_frame = (image.final_frame?`data:image/jpeg;base64,${image.final_frame}`:"");
-                let params: any = {
+                const params: any = {
                     // The database automatically increments IDs for us
                     id: -1,
                     image: `data:image/${mime};base64,${img}`,
@@ -555,7 +560,6 @@ export const useGeneratorStore = defineStore("generator", () => {
                     final_frame: final_frame,
                     enable_hr: image.params.enable_hr,
                     send_as_refimg: image.params.send_as_refimg,
-                    reverse_refimg: image.params.reverse_refimg,
                     lora_meta: "",
                 }
                 if (image.info && typeof image.info === 'string' && image.info.trim() !== '') {
@@ -615,7 +619,7 @@ export const useGeneratorStore = defineStore("generator", () => {
         return finalParams;
     }
 
-        /**
+    /**
      * Called when an image has failed.
      * @returns []
      */
@@ -873,6 +877,61 @@ export const useGeneratorStore = defineStore("generator", () => {
     }
 
     const referenceImages = ref<IReferenceImage[]>([]);
+
+    const videoStartFrame = ref<IReferenceImage | null>(null);
+    const videoEndFrame = ref<IReferenceImage | null>(null);
+
+    async function getImageFromEvent(event: any): Promise<IReferenceImage | null> {
+        const input = event.target as HTMLInputElement;
+        const fileList = input.files ?? event.dataTransfer?.files;
+        const selectedFile = (Array.from(fileList ?? []) as File[])[0];
+
+        if (!selectedFile) {
+            return null;
+        }
+
+        const dataUrl = await convertToBase64(selectedFile) as string;
+        return {
+            id: `${Date.now()}-${selectedFile.name}`,
+            name: selectedFile.name,
+            size: selectedFile.size,
+            dataUrl,
+            base64: dataUrl.includes("data:image") ? dataUrl.split(',')[1] : dataUrl,
+        };
+    }
+
+    async function setVideoStartFrame(event: any) {
+        videoStartFrame.value = await getImageFromEvent(event);
+        const input = event.target as HTMLInputElement;
+        if (input.value !== undefined) {
+            input.value = "";
+        }
+    }
+
+    async function setVideoEndFrame(event: any) {
+        videoEndFrame.value = await getImageFromEvent(event);
+        const input = event.target as HTMLInputElement;
+        if (input.value !== undefined) {
+            input.value = "";
+        }
+    }
+
+    function clearVideoStartFrame() {
+        videoStartFrame.value = null;
+        const inputElement = document.getElementById('video_start_frame_input') as HTMLInputElement;
+        if (inputElement) {
+            inputElement.value = "";
+        }
+    }
+
+    function clearVideoEndFrame() {
+        videoEndFrame.value = null;
+        const inputElement = document.getElementById('video_end_frame_input') as HTMLInputElement;
+        if (inputElement) {
+            inputElement.value = "";
+        }
+    }
+
     async function setExtraImage(event:any) {
         const input = event.target as HTMLInputElement;
         const fileList = input.files ?? event.dataTransfer?.files;
@@ -904,7 +963,7 @@ export const useGeneratorStore = defineStore("generator", () => {
         if (input.value !== undefined) {
             input.value = "";
         }
-    };
+    }
 
     function removeExtraImage(index: number) {
         referenceImages.value.splice(index, 1);
@@ -1011,6 +1070,8 @@ export const useGeneratorStore = defineStore("generator", () => {
         abortController,
         multiSelect,
         referenceImages,
+        videoStartFrame,
+        videoEndFrame,
         negativePrompt,
         generating,
         negativePromptLibrary,
@@ -1068,6 +1129,10 @@ export const useGeneratorStore = defineStore("generator", () => {
         removeExtraImage,
         moveExtraImage,
         clearExtraImage,
+        setVideoStartFrame,
+        setVideoEndFrame,
+        clearVideoStartFrame,
+        clearVideoEndFrame,
         getAvailableSamplers,
         getAvailableSchedulers,
         cacheVersion,
