@@ -14,6 +14,22 @@ dist-ssr
 coverage
 *.local
 
+# Local portable tooling
+/corepack
+/corepack.cmd
+/install_tools.bat
+/node.exe
+/nodevars.bat
+/npm
+/npm.cmd
+/npm.ps1
+/npx
+/npx.cmd
+/npx.ps1
+
+# Local generated notes
+/CHANGELOG.md
+
 /cypress/videos/
 /cypress/screenshots/
 
