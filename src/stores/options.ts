@@ -26,7 +26,7 @@ export const useOptionsStore = defineStore("options", () => {
     // A janky way to fix using color modes
     options.value.colorMode = useColorMode<BasicColorSchema>({
         emitAuto: true,
-        initialValue: options.value.colorMode
+        initialValue: options.value.colorMode as any
     }) as any
 
     return {
