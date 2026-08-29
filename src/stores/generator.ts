@@ -725,19 +725,18 @@ export const useGeneratorStore = defineStore("generator", () => {
             const splitPrompt = data.prompt.split(" ### ");
             prompt.value = splitPrompt[0];
             negativePrompt.value = splitPrompt[1] || "";
-            // the restored prompt carries the stored <lora:> tags; zero any matching row of the
+            // the restored prompt carries the stored <lora:> tags; remove any matching row of the
             // non-persisted LoRA list, so regenerating doesn't apply the row's multiplier on top of
             // the tag it was stored from
             const [, restoredLoras] = extractLorasFromPrompt(prompt.value);
             if (restoredLoras.length > 0) {
                 const availableLoras = (await fetchLoras()) ?? [];
-                for (const row of loraList.value) {
-                    if (!row.lora || row.lora.trim() === "") continue;
-                    const matches = restoredLoras.some(tag =>
+                loraList.value = loraList.value.filter(row => {
+                    if (!row.lora || row.lora.trim() === "") return true;
+                    return !restoredLoras.some(tag =>
                         tag.name === row.lora
                         || availableLoras.some(al => al.name === tag.name && al.path === row.lora));
-                    if (matches) row.multiplier = 0;
-                }
+                });
             }
         }
         if (data.sampler_name) {
