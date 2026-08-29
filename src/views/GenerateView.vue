@@ -45,6 +45,8 @@ import { breakpointsTailwind, computedAsync, useBreakpoints } from '@vueuse/core
 import handleUrlParams from "@/router/handleUrlParams";
 import InterrogationView from '@/components/InterrogationView.vue';
 import { formatSeconds } from '@/utils/format';
+import { parsePromptSegments } from '@/utils/expansions';
+import { extractLoraRowsFromPrompt, allocateLoraRows } from '@/utils/loras';
 
 const breakpoints = useBreakpoints(breakpointsTailwind);
 const isMobile = breakpoints.smallerOrEqual('md');
@@ -127,6 +129,27 @@ function moveLorasToPrompt() {
     });
     store.loraList = store.loraList.filter(row => !hasSelectedLora(row));
     store.prompt = store.prompt === "" ? tags.join(" ") : `${store.prompt} ${tags.join(" ")}`;
+}
+
+// moves the LoRA tags of the positive prompt into the (non-persisted) LoRA
+// list — the reverse of moveLorasToPrompt: each convertible tag becomes a row
+// (the trailing empty rows are reused first); tags inside {a|b} expansion
+// options, with an invalid weight, with the |high_noise| prefix, or with an
+// empty name are left in the prompt
+const promptLoraTagCount = computed(() => extractLoraRowsFromPrompt(store.prompt, parsePromptSegments(store.prompt))[1].length);
+
+function moveLorasFromPrompt() {
+    const [cleanedPrompt, extracted] = extractLoraRowsFromPrompt(store.prompt, parsePromptSegments(store.prompt));
+    if (extracted.length === 0) return;
+    const incoming = extracted.map(entry => {
+        // the row holds the LoRA's path when the server list is loaded (the
+        // row's select is optioned by path), the tag's raw name otherwise —
+        // generateImage resolves rows by name or path either way
+        const match = availableLoras.value.find(al => al.path === entry.name || al.name === entry.name);
+        return { lora: match ? match.path : entry.name, multiplier: entry.multiplier };
+    });
+    store.loraList = allocateLoraRows(store.loraList, incoming);
+    store.prompt = cleanedPrompt;
 }
 
 const rules = reactive<FormRules>({
@@ -312,6 +335,9 @@ handleUrlParams();
                             </el-button>
                             <el-button :icon="ArrowUp" @click="moveLorasToPrompt" :disabled="loraNamedCount === 0">
                                 To Prompt
+                            </el-button>
+                            <el-button :icon="ArrowDown" @click="moveLorasFromPrompt" :disabled="promptLoraTagCount === 0">
+                                From Prompt
                             </el-button>
                         </div>
                     </el-collapse-item>
