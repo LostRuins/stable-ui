@@ -326,7 +326,7 @@ export const useGeneratorStore = defineStore("generator", () => {
 
         const availableLoras = (
             promptsAndLoras.some(ps => ps.extractedLoras.length > 0)
-                ? await fetchLoras() : []);
+            ? await fetchLoras() : []);
 
         const processedPrompts = promptsAndLoras.map(({ extractedLoras, ...ps }) => {
             const loraRequest = (
@@ -619,7 +619,7 @@ export const useGeneratorStore = defineStore("generator", () => {
         return finalParams;
     }
 
-    /**
+        /**
      * Called when an image has failed.
      * @returns []
      */
