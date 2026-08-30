@@ -103,7 +103,7 @@ async function handlePaste(event: Event) {
             <div class="action-buttons">
                 <el-button @click="canvasStore.resetDrawing()" :icon="Close" plain />
                 <el-button @click="removeImage"                :icon="Delete" plain />
-                <el-button @click="canvasStore.downloadMask()" :icon="Download" plain />
+                <el-button @click="canvasStore.downloadSourceImage()" :icon="Download" plain />
                 <el-button @click="canvasStore.flipErase()"    :icon="canvasStore.erasing ? EditPen : EraserIcon" plain />
                 <el-color-picker v-model="canvasStore.drawColor" show-alpha v-if="canvasStore.drawing" />
             </div>

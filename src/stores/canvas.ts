@@ -3,6 +3,7 @@ import { computed, ref } from "vue";
 import { useGeneratorStore } from "./generator";
 import { useOptionsStore } from "./options";
 import { fabric } from "fabric";
+import { downloadImage } from "@/utils/download";
 
 export const useCanvasStore = defineStore("canvas", () => {
     interface ICanvasParams {
@@ -510,6 +511,15 @@ export const useCanvasStore = defineStore("canvas", () => {
         anchor.click();
     }
 
+    function downloadSourceImage() {
+        saveImages();
+        const store = useGeneratorStore();
+        const sourceImage = generatorImageProps.value.sourceImage;
+        if (!sourceImage) return;
+
+        downloadImage(sourceImage, `${store.generatorType.toLowerCase()}-reference`);
+    }
+
     async function asyncClone(object: any) {
         return new Promise((resolve, reject) => {
             try {
@@ -566,6 +576,7 @@ export const useCanvasStore = defineStore("canvas", () => {
         updateCropPreview,
         createNewCanvas,
         downloadMask,
+        downloadSourceImage,
         resetCanvas,
         resetDrawing,
         flipErase,
