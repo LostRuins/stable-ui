@@ -28,7 +28,7 @@ importers:
         version: 3.2.7
       element-plus:
         specifier: ^2.2.17
-        version: 2.11.1(vue@3.5.21(typescript@4.7.4))
+        version: 2.2.17(vue@3.5.21(typescript@4.7.4))
       fabric:
         specifier: ^5.2.4
         version: 5.5.2
@@ -100,8 +100,8 @@ importers:
         specifier: ^3.2.10
         version: 3.2.11(@types/node@16.18.126)
       vite-plugin-singlefile:
-        specifier: ^2.0.1
-        version: 2.3.0(vite@3.2.11(@types/node@16.18.126))
+        specifier: 2.0.1
+        version: 2.0.1(vite@3.2.11(@types/node@16.18.126))
       vue-tsc:
         specifier: ^0.40.7
         version: 0.40.13(typescript@4.7.4)
@@ -703,8 +703,8 @@ packages:
     resolution: {integrity: sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A==}
     engines: {node: '>= 0.4'}
 
-  element-plus@2.11.1:
-    resolution: {integrity: sha512-weYFIniyNXTAe9vJZnmZpYzurh4TDbdKhBsJwhbzuo0SDZ8PLwHVll0qycJUxc6SLtH+7A9F7dvdDh5CnqeIVA==}
+  element-plus@2.2.17:
+    resolution: {integrity: sha512-MGwMIE/q+FFD3kgS23x8HIe5043tmD1cTRwjhIX9o6fim1avFnUkrsfYRvybbz4CkyqSb185EheZS5AUPpXh2g==}
     peerDependencies:
       vue: ^3.2.0
 
@@ -1950,12 +1950,12 @@ packages:
   validate-npm-package-license@3.0.4:
     resolution: {integrity: sha512-DpKm2Ui/xN7/HQKCtpZxoRWBhZ9Z0kqtygG8XCgNQ8ZlDnxuQmWhj566j8fN4Cu3/JmbhsDo7fcAJq4s9h27Ew==}
 
-  vite-plugin-singlefile@2.3.0:
-    resolution: {integrity: sha512-DAcHzYypM0CasNLSz/WG0VdKOCxGHErfrjOoyIPiNxTPTGmO6rRD/te93n1YL/s+miXq66ipF1brMBikf99c6A==}
+  vite-plugin-singlefile@2.0.1:
+    resolution: {integrity: sha512-J74tfN6TE4fz0Hp7E1+dmVTmCpyazv4yuIpR6jd22Kq76d2CQDSQx3wDiHX8LT02f922V+YrLhRq2VIk/UYrig==}
     engines: {node: '>18.0.0'}
     peerDependencies:
-      rollup: ^4.44.1
-      vite: ^5.4.11 || ^6.0.0 || ^7.0.0
+      rollup: ^4.12.0
+      vite: ^5.1.4
 
   vite@3.2.11:
     resolution: {integrity: sha512-K/jGKL/PgbIgKCiJo5QbASQhFiV02X9Jh+Qq0AKCRCRKZtOTVi4t6wh75FDpGf2N9rYOnzH87OEFQNaFy6pdxQ==}
@@ -2810,7 +2810,7 @@ snapshots:
       es-errors: 1.3.0
       gopd: 1.2.0
 
-  element-plus@2.11.1(vue@3.5.21(typescript@4.7.4)):
+  element-plus@2.2.17(vue@3.5.21(typescript@4.7.4)):
     dependencies:
       '@ctrl/tinycolor': 3.6.1
       '@element-plus/icons-vue': 2.3.2(vue@3.5.21(typescript@4.7.4))
@@ -4262,7 +4262,7 @@ snapshots:
       spdx-correct: 3.2.0
       spdx-expression-parse: 3.0.1
 
-  vite-plugin-singlefile@2.3.0(vite@3.2.11(@types/node@16.18.126)):
+  vite-plugin-singlefile@2.0.1(vite@3.2.11(@types/node@16.18.126)):
     dependencies:
       micromatch: 4.0.8
       vite: 3.2.11(@types/node@16.18.126)

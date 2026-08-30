@@ -16,7 +16,7 @@ const props = defineProps<{
     info?: string;
     filterable?: boolean;
     labelStyle?: string;
-    placement?: string;
+    placement?: any;
 }>();
 
 const emit = defineEmits(["update:modelValue", "change"]);

@@ -21,7 +21,7 @@ const props = defineProps<{
 
 const emit = defineEmits(["update:modelValue"]);
 
-function onChanged(value: string | number | boolean) {
+function onChanged(value: string | number | boolean | undefined) {
     if (props.useBoolean && value === "Enabled") {
         emit("update:modelValue", true);
     } else if (props.useBoolean && value === "Disabled") {
