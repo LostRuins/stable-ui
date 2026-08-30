@@ -6,6 +6,23 @@ import {
 } from 'element-plus';
 import FormLabel from './FormLabel.vue';
 
+type Placement =
+    | "auto"
+    | "auto-start"
+    | "auto-end"
+    | "top"
+    | "top-start"
+    | "top-end"
+    | "bottom"
+    | "bottom-start"
+    | "bottom-end"
+    | "right"
+    | "right-start"
+    | "right-end"
+    | "left"
+    | "left-start"
+    | "left-end";
+
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const props = defineProps<{
     label?: string;
@@ -16,7 +33,7 @@ const props = defineProps<{
     info?: string;
     filterable?: boolean;
     labelStyle?: string;
-    placement?: any;
+    placement?: Placement;
 }>();
 
 const emit = defineEmits(["update:modelValue", "change"]);
