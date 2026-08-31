@@ -320,43 +320,6 @@ handleUrlParams();
                 <form-slider label="CLIP Skip(s)"          prop="clipSkips"       v-model="store.multiSelect.clipSkip.selected"    :min="store.minClipSkip"      :max="store.maxClipSkip"   info="Multi-select enabled. Last layers of CLIP to ignore. For most situations this can be left alone." multiple v-if="store.multiSelect.clipSkip.state === 'Multiple'" />
                 <form-slider label="CLIP Skip"             prop="clipSkip"        v-model="store.params.clip_skip"                 :min="store.minClipSkip"      :max="store.maxClipSkip"   info="Last layers of CLIP to ignore. For most situations this can be left alone." v-else-if="store.multiSelect.clipSkip.state === 'Enabled'" />
                 <form-slider label="Init Strength"         prop="denoise"         v-model="store.params.denoising_strength"        :min="store.minDenoise"       :max="store.maxDenoise"    :step="0.01" info="The final image will diverge from the starting image at higher values. 0=unchanged, 1=fullychanged" v-if="store.sourceGeneratorTypes.includes(store.generatorType)" />
-                <el-collapse v-model="loraListOpen" class="lora-list-collapse">
-                    <el-collapse-item name="lora-list">
-                        <template #title>
-                            <span class="lora-list-title">LoRAs</span>
-                            <span class="lora-list-summary">{{ loraSummary }}</span>
-                        </template>
-                        <div v-if="loraListLoaded && availableLoras.length === 0" class="lora-list-hint">
-                            No LoRAs were returned by the server.
-                        </div>
-                        <div v-for="(row, index) in store.loraList" :key="index" class="lora-list-row">
-                            <el-select v-model="row.lora" class="lora-list-select" filterable placeholder="Select a LoRA">
-                                <el-option value="" />
-                                <el-option
-                                    v-for="lora in availableLoras"
-                                    :key="lora.path"
-                                    :label="lora.name"
-                                    :value="lora.path"
-                                />
-                            </el-select>
-                            <el-input-number v-model="row.multiplier" :step="0.05" :precision="2" controls-position="right" />
-                            <el-tooltip content="Remove" placement="top">
-                                <el-button :icon="Delete" plain @click="store.removeLoraRow(index)" />
-                            </el-tooltip>
-                        </div>
-                        <div class="lora-list-add">
-                            <el-button :icon="Plus" @click="store.addLoraRow()" :disabled="availableLoras.length === 0">
-                                Add LoRA
-                            </el-button>
-                            <el-button :icon="ArrowUp" @click="moveLorasToPrompt" :disabled="loraNamedCount === 0">
-                                To Prompt
-                            </el-button>
-                            <el-button :icon="ArrowDown" @click="moveLorasFromPrompt" :disabled="promptLoraTagCount === 0">
-                                From Prompt
-                            </el-button>
-                        </div>
-                    </el-collapse-item>
-                </el-collapse>
                 <form-slider label="Video Frames"          prop="frames"          v-model="store.params.frames"                    :min="store.minFrames"        :max="store.maxFrames"     info="Number of consecutive video frames to generate (Video models only). More frames increases memory usage."/>
                 <form-slider label="FPS"                   prop="fps"             v-model="store.params.fps"                       :min="store.minFps"           :max="store.maxFps"        :disabled="store.params.frames <= 1" info="Frames per second for video generation." v-if="store.params.frames > 1" />
                 <div
@@ -527,6 +490,43 @@ handleUrlParams();
                         <form-switch label="Send as RefImg"    prop="send_as_refimg"   v-model="store.params.send_as_refimg"  v-if="store.generatorType === 'Img2Img'"  info="Instead of regular Img2Img, send the image as a reference image for edit models." />
                     </el-col>
                 </el-row>
+                <el-collapse v-model="loraListOpen" class="lora-list-collapse">
+                    <el-collapse-item name="lora-list">
+                        <template #title>
+                            <span class="lora-list-title">LoRAs</span>
+                            <span class="lora-list-summary">{{ loraSummary }}</span>
+                        </template>
+                        <div v-if="loraListLoaded && availableLoras.length === 0" class="lora-list-hint">
+                            No LoRAs were returned by the server.
+                        </div>
+                        <div v-for="(row, index) in store.loraList" :key="index" class="lora-list-row">
+                            <el-select v-model="row.lora" class="lora-list-select" filterable placeholder="Select a LoRA">
+                                <el-option value="" />
+                                <el-option
+                                    v-for="lora in availableLoras"
+                                    :key="lora.path"
+                                    :label="lora.name"
+                                    :value="lora.path"
+                                />
+                            </el-select>
+                            <el-input-number v-model="row.multiplier" :step="0.05" :precision="2" controls-position="right" />
+                            <el-tooltip content="Remove" placement="top">
+                                <el-button :icon="Delete" plain @click="store.removeLoraRow(index)" />
+                            </el-tooltip>
+                        </div>
+                        <div class="lora-list-add">
+                            <el-button :icon="Plus" @click="store.addLoraRow()" :disabled="availableLoras.length === 0">
+                                Add LoRA
+                            </el-button>
+                            <el-button :icon="ArrowUp" @click="moveLorasToPrompt" :disabled="loraNamedCount === 0">
+                                To Prompt
+                            </el-button>
+                            <el-button :icon="ArrowDown" @click="moveLorasFromPrompt" :disabled="promptLoraTagCount === 0">
+                                From Prompt
+                            </el-button>
+                        </div>
+                    </el-collapse-item>
+                </el-collapse>
             </div>
             <div class="main">
                 <el-button @click="() => {store.cancelled=true;store.generating=false;store.resetStore();}" class="reset-btn">Reset</el-button>
