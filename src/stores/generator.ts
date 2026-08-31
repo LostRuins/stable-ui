@@ -1046,7 +1046,7 @@ export const useGeneratorStore = defineStore("generator", () => {
         // Skip polling if set to "Off"
         if (useOptionsStore().fetchGenerationProgress === "Off") return;
         progressInfo.value = { percentage: 0, textInfo: null, currentStep: 0, totalSteps: 0, previewImage: null };
-        progressInterval.value = setInterval(fetchProgressInfo, 1000);
+        progressInterval.value = setInterval(fetchProgressInfo, 2000);
     }
 
     function stopProgressPolling(): void {
