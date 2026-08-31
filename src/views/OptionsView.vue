@@ -10,10 +10,12 @@ import {
     ElTabs,
     ElTabPane,
     ElMessage,
+    ElTooltip,
 } from 'element-plus';
 import {
     UploadFilled,
-    Download
+    Download,
+    Refresh
 } from '@element-plus/icons-vue';
 import { useOptionsStore } from '@/stores/options';
 import type { BasicColorSchema } from '@vueuse/core';
@@ -85,7 +87,13 @@ async function bulkDownload() {
             <el-tab-pane label="🖨️ Generation">
                 <h2>Generation Options</h2>
                 <el-form-item label="Base URL">
-                    <el-input class="apikey" prop="baseURL" v-model="store.baseURL" />
+                    <el-input class="apikey" prop="baseURL" v-model="store.baseURL">
+                        <template #append>
+                            <el-tooltip content="Invalidate all cached information for this server (LoRAs, samplers, schedulers, ...)" placement="top">
+                                <el-button :icon="Refresh" @click="generatorStore.invalidateApiCaches()" />
+                            </el-tooltip>
+                        </template>
+                    </el-input>
                 </el-form-item>
                 <h3>Parameter Controls</h3>
                 <div v-for="(item, key) in generatorStore.multiSelect" :key="key" >

@@ -10,6 +10,7 @@ import { useLocalStorage } from "@vueuse/core";
 import { DEBUG_MODE, MAX_PARALLEL_REQUESTS } from "@/constants";
 import { validateResponse } from "@/utils/validate";
 import { extractLorasFromPrompt } from "@/utils/loras";
+import { parsePromptSegments, expandPromptSegments } from "@/utils/expansions";
 import { convertToBase64 } from "@/utils/base64";
 import { buildApiUrl } from "@/utils/api";
 function getDefaultStore() {
@@ -82,6 +83,16 @@ type IReferenceImage = {
     size: number;
     dataUrl: string;
     base64: string;
+}
+
+/**
+ * A row of the non-persisted LoRA list on the generation screen
+ * */
+type ILoraListItem = {
+    /** Selected LoRA (the `path` from GET /sdapi/v1/loras, empty until one is picked) */
+    lora: string;
+    /** LoRA multiplier, sent in the lora field of the generation parameters */
+    multiplier: number;
 }
 
 interface IMultiSelect {
@@ -263,6 +274,7 @@ export const useGeneratorStore = defineStore("generator", () => {
         videoStartFrame.value = null;
         videoEndFrame.value = null;
         outputs.value = [];
+        loraList.value = [];
         useUIStore().showGeneratedImages = false;
         clearQueue();
         clearLastImageGenkey();
@@ -279,14 +291,15 @@ export const useGeneratorStore = defineStore("generator", () => {
     }
 
     /**
-     * Fetches available LoRAs from the server
+     * Fetches available LoRAs from the server. The result is cached per server
+     * baseURL (see getCachedEndpoint), so repeated calls (the generation screen's
+     * lazy panel fetch and generateImage) share a single round-trip. Resolves to
+     * the list (which may be empty), or to null if the request failed (a failed
+     * fetch is not cached, so the next attempt retries)
      * */
-    async function fetchLoras(): Promise<any[]> {
-        const optionsStore = useOptionsStore();
-        const response = await fetch(buildApiUrl(optionsStore.baseURL, "/sdapi/v1/loras"));
-        const resJSON = await response.json();
-        if (!validateResponse(response, resJSON, 200, "Failed to get available LoRAs")) return [];
-        return resJSON;
+    async function fetchLoras(): Promise<any[] | null> {
+        const result = await getCachedEndpoint<any[]>("/sdapi/v1/loras");
+        return Array.isArray(result) ? result : null;
     }
 
     /**
@@ -308,17 +321,17 @@ export const useGeneratorStore = defineStore("generator", () => {
         // Cache parameters so the user can't mutate the output data while it's generating
         const paramsCached: any[] = [];
 
-        // split "###" and {|} syntax
+        // split "###" and {|} syntax; the negative prompt is never scanned for LoRA tags, so any
+        // tag inside it is inert and is sent and stored as-is
         const processedRawPrompts = promptMatrix().map(ps => {
             const p = ps.split(" ### ");
             return {
-                full_prompt: ps,
                 prompt: p[0],
                 negative_prompt: p[1] || ""
             };
         });
 
-        // extract <lora:name:value> and build the lora field
+        // extract <lora:name:value> from the positive prompt
         const promptsAndLoras = processedRawPrompts.map(ps => {
             const [cleanedPrompt, extractedLoras] = extractLorasFromPrompt(ps.prompt);
             return { ...ps, prompt: cleanedPrompt, extractedLoras: extractedLoras };
@@ -326,23 +339,80 @@ export const useGeneratorStore = defineStore("generator", () => {
 
         const availableLoras = (
             promptsAndLoras.some(ps => ps.extractedLoras.length > 0)
-            ? await fetchLoras() : []);
+                || loraList.value.some(row => row.lora && row.lora.trim() !== "")
+            ? (await fetchLoras() ?? []) : []);
+
+        // the raw LoRA entries from the (non-persisted) LoRA list on the generation screen; rows
+        // without a selected LoRA are ignored. The entry's name is the LoRA's display name when the
+        // row can be resolved, the row's raw value otherwise (preserved as an inert tag)
+        const loraListEntries = loraList.value
+            .filter(row => row.lora && row.lora.trim() !== "")
+            .flatMap(row => {
+                const match = availableLoras.find(al => al.name === row.lora || al.path === row.lora);
+                const multiplier = Number(row.multiplier);
+                return [{ name: match ? match.name : row.lora, multiplier: isNaN(multiplier) ? 0 : multiplier }];
+            });
+
+        // merge entries by (name, is_high_noise), accumulating the multipliers (the server accumulates
+        // the same way for duplicate entries); entries with different is_high_noise are kept separate,
+        // as they apply to different generation phases
+        const mergeLoraEntries = (entries: { name: string; multiplier: number; is_high_noise?: boolean }[]) => {
+            const merged = new Map<string, { name: string; multiplier: number; is_high_noise?: boolean }>();
+            for (const entry of entries) {
+                if (!entry.name || entry.name.trim() === "") continue;
+                const key = `${entry.name}\u0000${entry.is_high_noise ? 1 : 0}`;
+                const existing = merged.get(key);
+                if (existing) {
+                    existing.multiplier = Math.round((existing.multiplier + entry.multiplier) * 10000) / 10000;
+                } else {
+                    merged.set(key, { ...entry });
+                }
+            }
+            return [...merged.values()];
+        };
 
         const processedPrompts = promptsAndLoras.map(({ extractedLoras, ...ps }) => {
-            const loraRequest = (
-                extractedLoras.length > 0 && availableLoras.length > 0 ?
-                    extractedLoras.map(l => {
-                        const match = availableLoras.find(al => al.name === l.name || al.path === l.name);
-                        return {
-                            path: match ? match.path : l.name,
-                            multiplier: l.multiplier,
-                            ...(l.is_high_noise ? { is_high_noise: true } : {}),
-                        };
-                    }) : []
-            );
+            // R: the raw LoRA list (the prompt's tags first, then the screen's rows) — everything that
+            // was requested, including zero-multiplier and unresolvable entries, which are preserved
+            // as inert <lora:> tags in the image metadata, but not sent to the server
+            const rawLoraEntries = mergeLoraEntries([
+                ...extractedLoras.map(l => ({
+                    name: l.name,
+                    multiplier: l.multiplier,
+                    ...(l.is_high_noise ? { is_high_noise: true } : {}),
+                })),
+                ...loraListEntries,
+            ]);
+
+            // G: what is actually sent to the server — zero-multiplier and unresolvable entries are
+            // filtered out, and each name is resolved to the LoRA's path; two names resolving to the
+            // same path are both sent (the server accumulates duplicate paths)
+            const loraRequest = rawLoraEntries.flatMap(entry => {
+                if (entry.multiplier === 0) return [];
+                const match = availableLoras.find(al => al.name === entry.name || al.path === entry.name);
+                return match ? [{
+                    path: match.path,
+                    multiplier: entry.multiplier,
+                    ...(entry.is_high_noise ? { is_high_noise: true } : {}),
+                }] : [];
+            });
+
+            // the full prompt stored in the image metadata: the tag-free positive prompt with the raw
+            // LoRA list R appended as <lora:> tags (so a re-queued image re-requests the same LoRAs),
+            // then the untouched negative prompt. Space runs left behind by tag removal are collapsed
+            // (metadata only, the request prompt is unaffected), so the stored prompt stays clean and
+            // stable across re-queue/regeneration cycles
+            const loraTags = rawLoraEntries.map(e =>
+                `<lora:${e.is_high_noise ? "|high_noise|" : ""}${e.name}:${String(Math.round(e.multiplier * 10000) / 10000)}>`);
+            const cleanedPositive = loraTags.length > 0 ? ps.prompt.replace(/ +/g, " ").trim() : ps.prompt;
+            const taggedPrompt = [cleanedPositive, loraTags.join(" ")]
+                .filter(s => s !== "")
+                .join(" ");
+            const full_prompt = ps.negative_prompt !== "" ? `${taggedPrompt} ### ${ps.negative_prompt}` : taggedPrompt;
 
             return {
                 ...ps,
+                full_prompt,
                 ...(loraRequest.length > 0 ? { lora: loraRequest } : {})
             };
         });
@@ -655,6 +725,19 @@ export const useGeneratorStore = defineStore("generator", () => {
             const splitPrompt = data.prompt.split(" ### ");
             prompt.value = splitPrompt[0];
             negativePrompt.value = splitPrompt[1] || "";
+            // the restored prompt carries the stored <lora:> tags; remove any matching row of the
+            // non-persisted LoRA list, so regenerating doesn't apply the row's multiplier on top of
+            // the tag it was stored from
+            const [, restoredLoras] = extractLorasFromPrompt(prompt.value);
+            if (restoredLoras.length > 0) {
+                const availableLoras = (await fetchLoras()) ?? [];
+                loraList.value = loraList.value.filter(row => {
+                    if (!row.lora || row.lora.trim() === "") return true;
+                    return !restoredLoras.some(tag =>
+                        tag.name === row.lora
+                        || availableLoras.some(al => al.name === tag.name && al.path === row.lora));
+                });
+            }
         }
         if (data.sampler_name) {
             params.value.sampler_name = data.sampler_name;
@@ -711,32 +794,15 @@ export const useGeneratorStore = defineStore("generator", () => {
     }
 
     /**
-     * Returns all prompt matrix combinations
+     * Returns all prompt matrix combinations. Expansion is two-phase: the
+     * prompt is parsed into literal/expansion segments (an expansion ends at
+     * the first `}`, no nesting; a stray or unclosed brace is literal), then
+     * the segments are expanded via Cartesian product and concatenated — no
+     * string replacement, so options are used verbatim.
      */
     function promptMatrix() {
         const prompt = getFullPrompt();
-        const matrixMatches = prompt.match(/\{(.*?)\}/g) || [];
-        if (matrixMatches.length === 0) return [prompt];
-        let prompts: string[] = [];
-        matrixMatches.forEach(matrix => {
-            const newPrompts: string[] = [];
-            const options = matrix.replace("{", "").replace("}", "").split("|");
-            if (prompts.length === 0) {
-                options.forEach(option => {
-                    const newPrompt = prompt.replace(matrix, option);
-                    newPrompts.push(newPrompt);
-                });
-            } else {
-                prompts.forEach(previousPrompt => {
-                    options.forEach(option => {
-                        const newPrompt = previousPrompt.replace(matrix, option);
-                        newPrompts.push(newPrompt);
-                    });
-                });
-            }
-            prompts = [...newPrompts];
-        });
-        return prompts;
+        return expandPromptSegments(parsePromptSegments(prompt));
     }
 
     /**
@@ -874,6 +940,17 @@ export const useGeneratorStore = defineStore("generator", () => {
      * */
     function getPrompt()  {
         return false;
+    }
+
+    // --- Non-persisted LoRA list (name + multiplier pairs) on the generation screen ---
+    const loraList = ref<ILoraListItem[]>([]);
+
+    function addLoraRow() {
+        loraList.value = [...loraList.value, { lora: "", multiplier: 0 }];
+    }
+
+    function removeLoraRow(index: number) {
+        loraList.value = loraList.value.filter((_, i) => i !== index);
     }
 
     const referenceImages = ref<IReferenceImage[]>([]);
@@ -1072,6 +1149,9 @@ export const useGeneratorStore = defineStore("generator", () => {
         referenceImages,
         videoStartFrame,
         videoEndFrame,
+        loraList,
+        addLoraRow,
+        removeLoraRow,
         negativePrompt,
         generating,
         negativePromptLibrary,
@@ -1135,6 +1215,7 @@ export const useGeneratorStore = defineStore("generator", () => {
         clearVideoEndFrame,
         getAvailableSamplers,
         getAvailableSchedulers,
+        fetchLoras,
         cacheVersion,
         invalidateApiCaches,
         getCachedEndpoint

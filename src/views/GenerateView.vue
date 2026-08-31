@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 import { useGeneratorStore, getNewSeed } from '@/stores/generator';
 import {
     type FormRules,
@@ -13,7 +13,10 @@ import {
     ElTooltip,
     ElRow,
     ElCol,
-    ElImage
+    ElImage,
+    ElSelect,
+    ElOption,
+    ElInputNumber
 } from 'element-plus';
 import {
     Comment,
@@ -23,6 +26,7 @@ import {
     ArrowUp,
     ArrowDown,
     Delete,
+    Plus,
 } from '@element-plus/icons-vue';
 import BrushFilled from '../components/icons/BrushFilled.vue';
 import ImageSearch from '../components/icons/ImageSearch.vue';
@@ -40,8 +44,9 @@ import { useCanvasStore } from '@/stores/canvas';
 import { breakpointsTailwind, computedAsync, useBreakpoints } from '@vueuse/core';
 import handleUrlParams from "@/router/handleUrlParams";
 import InterrogationView from '@/components/InterrogationView.vue';
-import { useOptionsStore } from '@/stores/options';
 import { formatSeconds } from '@/utils/format';
+import { parsePromptSegments } from '@/utils/expansions';
+import { extractLoraRowsFromPrompt, allocateLoraRows } from '@/utils/loras';
 
 const breakpoints = useBreakpoints(breakpointsTailwind);
 const isMobile = breakpoints.smallerOrEqual('md');
@@ -49,7 +54,6 @@ const isMobile = breakpoints.smallerOrEqual('md');
 const store = useGeneratorStore();
 const uiStore = useUIStore();
 const canvasStore = useCanvasStore();
-const optionsStore = useOptionsStore();
 
 const availableSamplers = computedAsync(async () => {
     const _ignore     = store.cacheVersion; // force update when cached value changes
@@ -66,6 +70,87 @@ const availableSchedulers = computedAsync(async () => {
     if (schedulerList.length === 0) return [];
     return updateCurrentScheduler(schedulerList);
 }, [])
+
+// non-persisted LoRA list (name + multiplier pairs) on the generation screen.
+// the server's LoRA list is fetched lazily: only if the panel is unfolded or
+// at least one LoRA row is enabled, to avoid the round-trip by default
+const loraListOpen = ref<"" | "lora-list">("");
+const availableLoras = ref<any[]>([]);
+const loraListLoaded = ref(false);
+const loraListLoading = ref(false);
+
+function loadLoraList() {
+    if (loraListLoaded.value || loraListLoading.value) return;
+    loraListLoading.value = true;
+    store.fetchLoras().then(list => {
+        // a failed fetch (null) keeps the list unloaded, so the next attempt retries
+        if (list !== null) {
+            availableLoras.value = list;
+            loraListLoaded.value = true;
+        }
+    }).finally(() => { loraListLoading.value = false; });
+}
+
+const loraEnabledCount = computed(() => store.loraList.filter(row => {
+    const multiplier = Number(row.multiplier);
+    return row.lora && row.lora.trim() !== "" && !isNaN(multiplier) && multiplier !== 0;
+}).length);
+
+watch(
+    () => loraListOpen.value !== "" || loraEnabledCount.value > 0,
+    needed => { if (needed) loadLoraList(); },
+    { immediate: true },
+);
+
+const loraSummary = computed(() => {
+    const enabled = loraEnabledCount.value;
+    const available = availableLoras.value.length;
+    if (enabled === 0) return loraListLoaded.value ? `${available} available` : "";
+    return loraListLoaded.value
+        ? `${enabled} enabled, ${available} available`
+        : `${enabled} enabled`;
+});
+
+const hasSelectedLora = (row: { lora: string }) => !!row.lora && row.lora.trim() !== "";
+const loraNamedCount = computed(() => store.loraList.filter(hasSelectedLora).length);
+
+// moves the rows with a selected LoRA out of the (non-persisted) LoRA list and appends
+// them to the positive prompt as <lora:name:weight> tags; rows without a selection stay
+function moveLorasToPrompt() {
+    const moving = store.loraList.filter(hasSelectedLora);
+    if (moving.length === 0) return;
+    const tags = moving.map(row => {
+        // the tag carries the LoRA's display name when the server list is loaded, the row's
+        // raw (path) value otherwise; both resolve later against GET /sdapi/v1/loras
+        const match = availableLoras.value.find(al => al.path === row.lora || al.name === row.lora);
+        const multiplier = Number(row.multiplier);
+        const weight = isNaN(multiplier) ? 0 : Math.round(multiplier * 10000) / 10000;
+        return `<lora:${match ? match.name : row.lora}:${weight}>`;
+    });
+    store.loraList = store.loraList.filter(row => !hasSelectedLora(row));
+    store.prompt = store.prompt === "" ? tags.join(" ") : `${store.prompt} ${tags.join(" ")}`;
+}
+
+// moves the LoRA tags of the positive prompt into the (non-persisted) LoRA
+// list — the reverse of moveLorasToPrompt: each convertible tag becomes a row
+// (the trailing empty rows are reused first); tags inside {a|b} expansion
+// options, with an invalid weight, with the |high_noise| prefix, or with an
+// empty name are left in the prompt
+const promptLoraTagCount = computed(() => extractLoraRowsFromPrompt(store.prompt, parsePromptSegments(store.prompt))[1].length);
+
+function moveLorasFromPrompt() {
+    const [cleanedPrompt, extracted] = extractLoraRowsFromPrompt(store.prompt, parsePromptSegments(store.prompt));
+    if (extracted.length === 0) return;
+    const incoming = extracted.map(entry => {
+        // the row holds the LoRA's path when the server list is loaded (the
+        // row's select is optioned by path), the tag's raw name otherwise —
+        // generateImage resolves rows by name or path either way
+        const match = availableLoras.value.find(al => al.path === entry.name || al.name === entry.name);
+        return { lora: match ? match.path : entry.name, multiplier: entry.multiplier };
+    });
+    store.loraList = allocateLoraRows(store.loraList, incoming);
+    store.prompt = cleanedPrompt;
+}
 
 const rules = reactive<FormRules>({
     prompt: [{
@@ -220,6 +305,43 @@ handleUrlParams();
                 <form-slider label="CLIP Skip(s)"          prop="clipSkips"       v-model="store.multiSelect.clipSkip.selected"    :min="store.minClipSkip"      :max="store.maxClipSkip"   info="Multi-select enabled. Last layers of CLIP to ignore. For most situations this can be left alone." multiple v-if="store.multiSelect.clipSkip.state === 'Multiple'" />
                 <form-slider label="CLIP Skip"             prop="clipSkip"        v-model="store.params.clip_skip"                 :min="store.minClipSkip"      :max="store.maxClipSkip"   info="Last layers of CLIP to ignore. For most situations this can be left alone." v-else-if="store.multiSelect.clipSkip.state === 'Enabled'" />
                 <form-slider label="Init Strength"         prop="denoise"         v-model="store.params.denoising_strength"        :min="store.minDenoise"       :max="store.maxDenoise"    :step="0.01" info="The final image will diverge from the starting image at higher values. 0=unchanged, 1=fullychanged" v-if="store.sourceGeneratorTypes.includes(store.generatorType)" />
+                <el-collapse v-model="loraListOpen" class="lora-list-collapse">
+                    <el-collapse-item name="lora-list">
+                        <template #title>
+                            <span class="lora-list-title">LoRAs</span>
+                            <span class="lora-list-summary">{{ loraSummary }}</span>
+                        </template>
+                        <div v-if="loraListLoaded && availableLoras.length === 0" class="lora-list-hint">
+                            No LoRAs were returned by the server.
+                        </div>
+                        <div v-for="(row, index) in store.loraList" :key="index" class="lora-list-row">
+                            <el-select v-model="row.lora" class="lora-list-select" filterable placeholder="Select a LoRA">
+                                <el-option value="" />
+                                <el-option
+                                    v-for="lora in availableLoras"
+                                    :key="lora.path"
+                                    :label="lora.name"
+                                    :value="lora.path"
+                                />
+                            </el-select>
+                            <el-input-number v-model="row.multiplier" :step="0.05" :precision="2" controls-position="right" />
+                            <el-tooltip content="Remove" placement="top">
+                                <el-button :icon="Delete" plain @click="store.removeLoraRow(index)" />
+                            </el-tooltip>
+                        </div>
+                        <div class="lora-list-add">
+                            <el-button :icon="Plus" @click="store.addLoraRow()" :disabled="availableLoras.length === 0">
+                                Add LoRA
+                            </el-button>
+                            <el-button :icon="ArrowUp" @click="moveLorasToPrompt" :disabled="loraNamedCount === 0">
+                                To Prompt
+                            </el-button>
+                            <el-button :icon="ArrowDown" @click="moveLorasFromPrompt" :disabled="promptLoraTagCount === 0">
+                                From Prompt
+                            </el-button>
+                        </div>
+                    </el-collapse-item>
+                </el-collapse>
                 <form-slider label="Video Frames"          prop="frames"          v-model="store.params.frames"                    :min="store.minFrames"        :max="store.maxFrames"     info="Number of consecutive video frames to generate (Video models only). More frames increases memory usage."/>
                 <form-slider label="FPS"                   prop="fps"             v-model="store.params.fps"                       :min="store.minFps"           :max="store.maxFps"        :disabled="store.params.frames <= 1" info="Frames per second for video generation." v-if="store.params.frames > 1" />
                 <div
@@ -610,6 +732,44 @@ handleUrlParams();
     border-radius: 6px;
     color: var(--el-text-color-secondary);
     font-size: 13px;
+}
+
+.lora-list-collapse {
+    width: 100%;
+    margin: 14px 0;
+}
+
+.lora-list-title {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.lora-list-summary {
+    margin-left: 8px;
+    font-size: 13px;
+    color: var(--el-text-color-secondary);
+}
+
+.lora-list-hint {
+    padding: 4px 0;
+    color: var(--el-text-color-secondary);
+    font-size: 13px;
+}
+
+.lora-list-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+}
+
+.lora-list-select {
+    flex: 1;
+    min-width: 140px;
+}
+
+.lora-list-add {
+    padding: 6px 0;
 }
 
 .video-frame-selectors {
