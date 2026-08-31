@@ -12,37 +12,37 @@ export interface ILoraData {
  * @returns An array containing the modified prompt and the extracted LoRA data.
  */
 export function extractLorasFromPrompt(prompt: string): [string, ILoraData[]] {
-  const loraData: ILoraData[] = [];
-  const pattern = /<lora:([^:>]+):([^>]+)>/g;
+    const loraData: ILoraData[] = [];
+    const pattern = /<lora:([^:>]+):([^>]+)>/g;
 
-  const updatedPrompt = prompt.replace(pattern, (match, rawPath, rawMul) => {
-    if (rawMul.trim() === "") {
-      return "";
-    }
-    const mul = Number(rawMul);
+    const updatedPrompt = prompt.replace(pattern, (match, rawPath, rawMul) => {
+        if (rawMul.trim() === "") {
+            return "";
+        }
+        const mul = Number(rawMul);
 
-    if (isNaN(mul)) {
-      return "";
-    }
+        if (isNaN(mul)) {
+            return "";
+        }
 
-    let path = rawPath;
-    let isHighNoise = false;
-    const prefix = "|high_noise|";
-    if (path.startsWith(prefix)) {
-      path = path.substring(prefix.length);
-      isHighNoise = true;
-    }
+        let path = rawPath;
+        let isHighNoise = false;
+        const prefix = "|high_noise|";
+        if (path.startsWith(prefix)) {
+            path = path.substring(prefix.length);
+            isHighNoise = true;
+        }
 
-    loraData.push({
-      name: path,
-      multiplier: mul,
-      ...(isHighNoise ? { is_high_noise: true } : {}),
+        loraData.push({
+            name: path,
+            multiplier: mul,
+            ...(isHighNoise ? { is_high_noise: true } : {}),
+        });
+
+        return "";
     });
 
-    return "";
-  });
-
-  return [updatedPrompt, loraData];
+    return [updatedPrompt, loraData];
 }
 
 /**
@@ -95,48 +95,49 @@ export interface ILoraRow {
  *           unchanged when no tag is converted.
  */
 export function extractLoraRowsFromPrompt(prompt: string, segments: PromptSegment[]): [string, ILoraRowEntry[]] {
-  const separatorIndex = prompt.indexOf(" ### ");
-  const positive = separatorIndex === -1 ? prompt : prompt.slice(0, separatorIndex);
-  const rest = separatorIndex === -1 ? "" : prompt.slice(separatorIndex);
+    const separatorIndex = prompt.indexOf(" ### ");
+    const positive = separatorIndex === -1 ? prompt : prompt.slice(0, separatorIndex);
+    const rest = separatorIndex === -1 ? "" : prompt.slice(separatorIndex);
 
-  const pattern = /<lora:([^:>]+):([^>]+)>/g;
-  const prefix = "|high_noise|";
-  const tags: { name: string; multiplier: number; start: number; end: number }[] = [];
-  for (const segment of segments) {
-    if (segment.type !== "literal") continue;
-    if (segment.start >= positive.length) break; // the segments tile the whole prompt
-    for (const match of segment.text.matchAll(pattern)) {
-      const tagIndex = match.index;
-      if (tagIndex === undefined) continue; // the type is optional, matchAll always sets it
-      const start = segment.start + tagIndex;
-      if (start >= positive.length) continue; // the tag starts in the unscanned remainder
-      const weight = Number(match[2]);
-      if (isNaN(weight)) continue; // invalid weight: keep the tag
-      const name = match[1];
-      if (name.startsWith(prefix)) continue; // high-noise tags are kept
-      if (name.trim() === "") continue; // empty name: keep the tag
-      tags.push({
-        name,
-        multiplier: weight,
-        start,
-        end: Math.min(start + match[0].length, positive.length),
-      });
+    const pattern = /<lora:([^:>]+):([^>]+)>/g;
+    const prefix = "|high_noise|";
+    const tags: { name: string; multiplier: number; start: number; end: number }[] = [];
+    for (const segment of segments) {
+        if (segment.type !== "literal") continue;
+        if (segment.start >= positive.length) break; // the segments tile the whole prompt
+        for (const match of segment.text.matchAll(pattern)) {
+            const tagIndex = match.index;
+            if (tagIndex === undefined) continue; // the type is optional, matchAll always sets it
+            const start = segment.start + tagIndex;
+            if (start >= positive.length) continue; // the tag starts in the unscanned remainder
+            if (match[2].trim() === "") continue; // blank weight: keep the tag
+            const weight = Number(match[2]);
+            if (isNaN(weight)) continue; // invalid weight: keep the tag
+            const name = match[1];
+            if (name.startsWith(prefix)) continue; // high-noise tags are kept
+            if (name.trim() === "") continue; // empty name: keep the tag
+            tags.push({
+                name,
+                multiplier: weight,
+                start,
+                end: Math.min(start + match[0].length, positive.length),
+            });
+        }
     }
-  }
 
-  if (tags.length === 0) return [prompt, []];
+    if (tags.length === 0) return [prompt, []];
 
-  // remove the converted tags (last first, so the earlier offsets stay valid),
-  // collapse the space runs left behind, and trim — the `" ### "` remainder
-  // is preserved as-is
-  let cleaned = positive;
-  for (let i = tags.length - 1; i >= 0; i--) {
-    cleaned = cleaned.slice(0, tags[i].start) + cleaned.slice(tags[i].end);
-  }
-  return [
-    cleaned.replace(/ +/g, " ").trim() + rest,
-    tags.map(tag => ({ name: tag.name, multiplier: tag.multiplier })),
-  ];
+    // remove the converted tags (last first, so the earlier offsets stay valid),
+    // collapse the space runs left behind, and trim — the `" ### "` remainder
+    // is preserved as-is
+    let cleaned = positive;
+    for (let i = tags.length - 1; i >= 0; i--) {
+        cleaned = cleaned.slice(0, tags[i].start) + cleaned.slice(tags[i].end);
+    }
+    return [
+        cleaned.replace(/ +/g, " ").trim() + rest,
+        tags.map(tag => ({ name: tag.name, multiplier: tag.multiplier })),
+    ];
 }
 
 /**
@@ -150,22 +151,22 @@ export function extractLoraRowsFromPrompt(prompt: string, segments: PromptSegmen
  * @returns A new row list (the input rows are shallow-copied, not mutated).
  */
 export function allocateLoraRows(rows: ILoraRow[], incoming: ILoraRow[]): ILoraRow[] {
-  const result: ILoraRow[] = rows.map(row => ({ ...row }));
-  let firstTrailingEmpty = result.length;
-  while (
-    firstTrailingEmpty > 0
+    const result: ILoraRow[] = rows.map(row => ({ ...row }));
+    let firstTrailingEmpty = result.length;
+    while (
+        firstTrailingEmpty > 0
     && result[firstTrailingEmpty - 1].lora === ""
     && result[firstTrailingEmpty - 1].multiplier === 0
-  ) {
-    firstTrailingEmpty--;
-  }
-  incoming.forEach((entry, i) => {
-    const index = firstTrailingEmpty + i;
-    if (index < result.length) {
-      result[index] = { lora: entry.lora, multiplier: entry.multiplier };
-    } else {
-      result.push({ lora: entry.lora, multiplier: entry.multiplier });
+    ) {
+        firstTrailingEmpty--;
     }
-  });
-  return result;
+    incoming.forEach((entry, i) => {
+        const index = firstTrailingEmpty + i;
+        if (index < result.length) {
+            result[index] = { lora: entry.lora, multiplier: entry.multiplier };
+        } else {
+            result.push({ lora: entry.lora, multiplier: entry.multiplier });
+        }
+    });
+    return result;
 }

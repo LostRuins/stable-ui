@@ -91,6 +91,11 @@ function loadLoraList() {
     }).finally(() => { loraListLoading.value = false; });
 }
 
+function resetLocalLoraListCache() {
+    availableLoras.value = [];
+    loraListLoaded.value = false;
+}
+
 const loraEnabledCount = computed(() => store.loraList.filter(row => {
     const multiplier = Number(row.multiplier);
     return row.lora && row.lora.trim() !== "" && !isNaN(multiplier) && multiplier !== 0;
@@ -100,6 +105,16 @@ watch(
     () => loraListOpen.value !== "" || loraEnabledCount.value > 0,
     needed => { if (needed) loadLoraList(); },
     { immediate: true },
+);
+
+watch(
+    () => store.cacheVersion,
+    () => {
+        resetLocalLoraListCache();
+        if (loraListOpen.value !== "" || loraEnabledCount.value > 0) {
+            loadLoraList();
+        }
+    },
 );
 
 const loraSummary = computed(() => {

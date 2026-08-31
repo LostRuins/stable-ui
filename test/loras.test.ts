@@ -62,6 +62,10 @@ test("extractLoraRowsFromPrompt leaves tags with an invalid weight as-is", () =>
     const [cleaned2, rows2] = extractRows("a <lora:x:> b");
     assert.equal(cleaned2, "a <lora:x:> b");
     assert.deepEqual(rows2, []);
+
+    const [cleaned3, rows3] = extractRows("a <lora:x:   > b");
+    assert.equal(cleaned3, "a <lora:x:   > b");
+    assert.deepEqual(rows3, []);
 });
 
 test("extractLoraRowsFromPrompt leaves high-noise tags as-is", () => {

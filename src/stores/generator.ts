@@ -340,7 +340,7 @@ export const useGeneratorStore = defineStore("generator", () => {
         const availableLoras = (
             promptsAndLoras.some(ps => ps.extractedLoras.length > 0)
                 || loraList.value.some(row => row.lora && row.lora.trim() !== "")
-            ? (await fetchLoras() ?? []) : []);
+                ? (await fetchLoras() ?? []) : []);
 
         // the raw LoRA entries from the (non-persisted) LoRA list on the generation screen; rows
         // without a selected LoRA are ignored. The entry's name is the LoRA's display name when the
@@ -350,20 +350,25 @@ export const useGeneratorStore = defineStore("generator", () => {
             .flatMap(row => {
                 const match = availableLoras.find(al => al.name === row.lora || al.path === row.lora);
                 const multiplier = Number(row.multiplier);
-                return [{ name: match ? match.name : row.lora, multiplier: isNaN(multiplier) ? 0 : multiplier }];
+                return [{
+                    name: match ? match.name : row.lora,
+                    multiplier: isNaN(multiplier) ? 0 : multiplier,
+                    allowUnresolved: false,
+                }];
             });
 
         // merge entries by (name, is_high_noise), accumulating the multipliers (the server accumulates
         // the same way for duplicate entries); entries with different is_high_noise are kept separate,
         // as they apply to different generation phases
-        const mergeLoraEntries = (entries: { name: string; multiplier: number; is_high_noise?: boolean }[]) => {
-            const merged = new Map<string, { name: string; multiplier: number; is_high_noise?: boolean }>();
+        const mergeLoraEntries = (entries: { name: string; multiplier: number; is_high_noise?: boolean; allowUnresolved: boolean }[]) => {
+            const merged = new Map<string, { name: string; multiplier: number; is_high_noise?: boolean; allowUnresolved: boolean }>();
             for (const entry of entries) {
                 if (!entry.name || entry.name.trim() === "") continue;
                 const key = `${entry.name}\u0000${entry.is_high_noise ? 1 : 0}`;
                 const existing = merged.get(key);
                 if (existing) {
                     existing.multiplier = Math.round((existing.multiplier + entry.multiplier) * 10000) / 10000;
+                    existing.allowUnresolved = existing.allowUnresolved || entry.allowUnresolved;
                 } else {
                     merged.set(key, { ...entry });
                 }
@@ -380,6 +385,7 @@ export const useGeneratorStore = defineStore("generator", () => {
                     name: l.name,
                     multiplier: l.multiplier,
                     ...(l.is_high_noise ? { is_high_noise: true } : {}),
+                    allowUnresolved: true,
                 })),
                 ...loraListEntries,
             ]);
@@ -390,8 +396,9 @@ export const useGeneratorStore = defineStore("generator", () => {
             const loraRequest = rawLoraEntries.flatMap(entry => {
                 if (entry.multiplier === 0) return [];
                 const match = availableLoras.find(al => al.name === entry.name || al.path === entry.name);
-                return match ? [{
-                    path: match.path,
+                const path = match ? match.path : entry.allowUnresolved ? entry.name : "";
+                return path ? [{
+                    path,
                     multiplier: entry.multiplier,
                     ...(entry.is_high_noise ? { is_high_noise: true } : {}),
                 }] : [];
@@ -689,7 +696,7 @@ export const useGeneratorStore = defineStore("generator", () => {
         return finalParams;
     }
 
-        /**
+    /**
      * Called when an image has failed.
      * @returns []
      */
