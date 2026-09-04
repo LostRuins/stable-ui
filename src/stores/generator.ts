@@ -536,8 +536,7 @@ export const useGeneratorStore = defineStore("generator", () => {
                 newgen.params["video_output_type"] = 2; //request avi to download as well
             }
             const kcppExtraArgs: any = {};
-            // flow_shift <= 0 means disabled (not sent), similar to clip_skip -1
-            if (flow_shift > 0)
+            if(multiSelect.value.flowShift.state === "Enabled" && flow_shift > 0)
             {
                 kcppExtraArgs["params"] = {
                     flow_shift: flow_shift
@@ -781,7 +780,10 @@ export const useGeneratorStore = defineStore("generator", () => {
         if (data.steps)           params.value.steps = validateParam("steps", data.steps, maxSteps.value, defaults.steps as number);
         if (data.cfg_scale)       params.value.cfg_scale = data.cfg_scale;
         if (data.eta || data.eta === 0) params.value.eta = data.eta;
-        if (data.flow_shift || data.flow_shift === 0) params.value.flow_shift = data.flow_shift;
+        if (data.flow_shift || data.flow_shift === 0) {
+            params.value.flow_shift = data.flow_shift;
+            multiSelect.value.flowShift.state = data.flow_shift > 0 ? "Enabled" : "Disabled";
+        }
         if (data.width)           params.value.width = validateParam("width", data.width, maxDimensions.value, defaults.width as number);
         if (data.height)          params.value.height = validateParam("height", data.height, maxDimensions.value, defaults.height as number);
         if (data.seed)            params.value.seed = data.seed;
