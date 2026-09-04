@@ -32,6 +32,7 @@ export interface ImageData {
     enable_hr?: 1 | 0;
     send_as_refimg?: 1 | 0;
     eta?: number;
+    flow_shift?: number;
     lora_meta?: string;
 }
 

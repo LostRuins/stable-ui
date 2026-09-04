@@ -22,6 +22,7 @@ function getDefaultStore() {
         height: 512, // make sure these are divisible by 64
         cfg_scale: 5,
         eta: 1.0,
+        flow_shift: 0,
         clip_skip: 0,
         seed: -1,
         denoising_strength: 0.6,
@@ -102,6 +103,7 @@ interface IMultiSelect {
     guidance: IMultiSelectItem<number>;
     clipSkip: IMultiSelectItem<number>;
     eta: IMultiSelectItem<number>;
+    flowShift: IMultiSelectItem<number>;
 }
 
 interface CarouselOutput {
@@ -175,6 +177,13 @@ export const useGeneratorStore = defineStore("generator", () => {
             selected: [params.value.eta],
             mapToParam: el => el.eta,
         },
+        flowShift: {
+            name: "Flow Shift",
+            state: "Disabled",
+            allowedStates: ["Disabled", "Enabled"],
+            selected: [params.value.flow_shift],
+            mapToParam: el => el.flow_shift,
+        },
     });
 
     const getDefaultImageProps = (): ITypeParams => ({
@@ -239,6 +248,8 @@ export const useGeneratorStore = defineStore("generator", () => {
     const maxCfgScale = ref(24);
     const minEta = ref(0);
     const maxEta = ref(1);
+    const minFlowShift = ref(0);
+    const maxFlowShift = ref(20);
     const minDenoise = ref(0);
     const maxDenoise = ref(1);
     const minClipSkip = ref(0);
@@ -424,7 +435,7 @@ export const useGeneratorStore = defineStore("generator", () => {
             };
         });
 
-        const { seed, cfg_scale, eta, steps, clip_skip, sampler_name, scheduler, n: batch_size,
+        const { seed, cfg_scale, eta, steps, clip_skip, flow_shift, sampler_name, scheduler, n: batch_size,
             ...currentParams } = params.value;
 
         // create list of seeds
@@ -524,11 +535,21 @@ export const useGeneratorStore = defineStore("generator", () => {
             {
                 newgen.params["video_output_type"] = 2; //request avi to download as well
             }
+            const kcppExtraArgs: any = {};
+            // flow_shift <= 0 means disabled (not sent), similar to clip_skip -1
+            if (flow_shift > 0)
+            {
+                kcppExtraArgs["params"] = {
+                    flow_shift: flow_shift
+                };
+            }
             if(useOptionsStore().keepImageGenOnDisconnect === "Enabled")
             {
-                newgen.params["kcpp_extra_args"] = {
-                    keep_image_gen_on_disconnect: true
-                };
+                kcppExtraArgs["keep_image_gen_on_disconnect"] = true;
+            }
+            if (Object.keys(kcppExtraArgs).length > 0)
+            {
+                newgen.params["kcpp_extra_args"] = kcppExtraArgs;
             }
             paramsCached.push(newgen);
         }
@@ -637,6 +658,8 @@ export const useGeneratorStore = defineStore("generator", () => {
                     final_frame: final_frame,
                     enable_hr: image.params.enable_hr,
                     send_as_refimg: image.params.send_as_refimg,
+                    // flow_shift is sent nested under kcpp_extra_args.params (not a top-level field)
+                    flow_shift: image.params.kcpp_extra_args?.params?.flow_shift,
                     lora_meta: "",
                 }
                 if (image.info && typeof image.info === 'string' && image.info.trim() !== '') {
@@ -758,6 +781,7 @@ export const useGeneratorStore = defineStore("generator", () => {
         if (data.steps)           params.value.steps = validateParam("steps", data.steps, maxSteps.value, defaults.steps as number);
         if (data.cfg_scale)       params.value.cfg_scale = data.cfg_scale;
         if (data.eta || data.eta === 0) params.value.eta = data.eta;
+        if (data.flow_shift || data.flow_shift === 0) params.value.flow_shift = data.flow_shift;
         if (data.width)           params.value.width = validateParam("width", data.width, maxDimensions.value, defaults.width as number);
         if (data.height)          params.value.height = validateParam("height", data.height, maxDimensions.value, defaults.height as number);
         if (data.seed)            params.value.seed = data.seed;
@@ -1180,6 +1204,8 @@ export const useGeneratorStore = defineStore("generator", () => {
         maxFps,
         minEta,
         maxEta,
+        minFlowShift,
+        maxFlowShift,
         clipSkipList,
         cfgList,
         queue,
