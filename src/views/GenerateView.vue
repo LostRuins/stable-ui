@@ -330,7 +330,7 @@ handleUrlParams();
                     @drop.prevent="store.setExtraImage($event)"
                 >
                     <div class="reference-images-header">
-                        <span class="reference-images-label">Reference Images</span>
+                        <span class="reference-images-label">Reference Media</span>
                         <div class="reference-images-actions">
 
                             <input
@@ -338,7 +338,7 @@ handleUrlParams();
                                 type="file"
                                 id="extra_image_input"
                                 @change="store.setExtraImage($event)"
-                                accept="image/*"
+                                accept="image/*,audio/*"
                                 multiple
                             />
                             <el-button @click="selectExtraImages">
@@ -348,7 +348,7 @@ handleUrlParams();
                                 @click="store.clearExtraImage()"
                                 :disabled="store.referenceImages.length === 0"
                             >
-                                Clear Images
+                                Clear Files
                             </el-button>
                         </div>
                     </div>
