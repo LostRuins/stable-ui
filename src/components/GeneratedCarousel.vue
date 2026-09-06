@@ -4,7 +4,7 @@ import { useOptionsStore } from '@/stores/options';
 import { useUIStore } from '@/stores/ui';
 import { ElCarousel, ElCarouselItem, ElImage, ElDivider, ElScrollbar, ElIcon } from 'element-plus';
 import { Back } from '@element-plus/icons-vue';
-import { ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import ImageActions from './ImageActions.vue';
 
 const store = useGeneratorStore();
@@ -12,14 +12,29 @@ const uiStore = useUIStore();
 const optionStore = useOptionsStore();
 
 const index = ref(0);
+const currentOutput = computed(() => store.outputs[index.value]?.output);
+
 function onChange(newIndex: number) {
     index.value = newIndex;
-    console.log(store.outputs[index.value])
 }
 
 function onDelete(id: number) {
-    store.outputs.splice(store.outputs.findIndex(el => el.output.id === id), 1)
+    const deletedIndex = store.outputs.findIndex(el => el.output.id === id);
+    if (deletedIndex === -1) return;
+
+    store.outputs.splice(deletedIndex, 1);
 }
+
+watch(
+    () => store.outputs.length,
+    (length) => {
+        if (length === 0) {
+            index.value = 0;
+        } else if (index.value >= length) {
+            index.value = length - 1;
+        }
+    },
+);
 </script>
 
 <template>
@@ -36,7 +51,7 @@ function onDelete(id: number) {
                 indicator-position="outside"
                 @change="onChange"
             >
-                <el-carousel-item v-for="(imageData, index) in store.outputs" :key="index" style="display: flex; justify-content: center;">
+                <el-carousel-item v-for="imageData in store.outputs" :key="imageData.output.id" style="display: flex; justify-content: center;">
                     <video :src="imageData.output.image" controls v-if="imageData.type === 'video'" style="max-width: 100%; height: 100%;" />
                     <el-image
                         :src="imageData.output.image"
@@ -54,7 +69,8 @@ function onDelete(id: number) {
                 <el-scrollbar>
                     <div style="white-space: nowrap;">
                         <ImageActions
-                            :imageData="store.outputs[index].output"
+                            v-if="currentOutput"
+                            :imageData="currentOutput"
                             :on-delete="onDelete"
                             :show-dismiss="true"
                         />

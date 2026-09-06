@@ -6,13 +6,14 @@ import { SwipeDirection, useSwipe } from '@vueuse/core';
 import ImageActions from '../components/ImageActions.vue';
 import { computed, ref, watch } from 'vue';
 import { useUIStore } from '@/stores/ui';
-import { useOutputStore } from '@/stores/outputs';
+import { useOutputStore, type ImageData } from '@/stores/outputs';
 import { db } from '@/utils/db';
 import { useGeneratorStore } from '@/stores/generator';
 import { downloadImage, downloadVideo } from '@/utils/download';
 
 const store = useOutputStore();
 const uiStore = useUIStore();
+const generatorStore = useGeneratorStore();
 
 const target = ref();
 useSwipe(target, {
@@ -31,19 +32,41 @@ const modalOpen = computed({
     }
 });
 
-const currentOutput = ref(store.currentOutputs[0]);
+const currentOutput = ref<ImageData | undefined>(store.currentOutputs[0]);
 
 watch(
     () => uiStore.activeModal,
-    async () => {
-        const output = store.currentOutputs.find(el => el.id === uiStore.activeModal);
+    async (activeModal) => {
+        if (activeModal === -1) {
+            currentOutput.value = undefined;
+            return;
+        }
+
+        const output = store.currentOutputs.find(el => el.id === activeModal);
         if (output) return currentOutput.value = output;
-        currentOutput.value = await db.outputs.get(uiStore.activeModal) || store.currentOutputs[0];
+
+        currentOutput.value = undefined;
+        const persistedOutput = await db.outputs.get(activeModal);
+        if (uiStore.activeModal !== activeModal) return;
+
+        if (!persistedOutput) {
+            currentOutput.value = undefined;
+            uiStore.activeModal = -1;
+            return;
+        }
+
+        currentOutput.value = persistedOutput;
     }
 )
 
 function handleClose() {
     modalOpen.value = false;
+}
+
+function handleDelete(id: number) {
+    const outputIndex = generatorStore.outputs.findIndex(el => el.output.id === id);
+    if (outputIndex !== -1) generatorStore.outputs.splice(outputIndex, 1);
+    handleClose();
 }
 
 function extendVideo()
@@ -85,37 +108,38 @@ function downloadAvi() {
             >
                 <img
                     v-if="currentOutput?.image"
-                    :src="currentOutput.image"
+                    :src="currentOutput?.image"
                     alt="Output image"
                     style="max-width: 100%; max-height: 100%; object-fit: contain;"
                 />
             </div>
         </div>
-        <div style="font-size: 16px; font-weight: 500;">{{currentOutput.prompt?.split("###")[0] || 'Unknown Creation'}}</div>
+        <div style="font-size: 16px; font-weight: 500;">{{currentOutput?.prompt?.split("###")[0] || 'Unknown Creation'}}</div>
         <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; letter-spacing: 0.025em;">
-            <div>Negative Prompt: {{currentOutput.prompt?.split("###")[1] || "None"}}</div>
-            <span>Model: {{currentOutput.modelName || "Unknown"}} - </span>
-            <span>Sampler: {{currentOutput.sampler_name || "Unknown"}} - </span>
-            <span>Scheduler: {{currentOutput.scheduler || "Unknown"}} - </span>
-            <span>Seed: {{currentOutput.seed || "Unknown"}} - </span>
-            <span>Steps: {{currentOutput.steps || "Unknown"}} - </span>
-            <span>CFG Scale: {{currentOutput.cfg_scale || "Unknown"}} - </span>
-            <span>Clip Skip: {{currentOutput.clip_skip ?? "Unknown"}} - </span>
-            <span>Dimensions: {{currentOutput.width || "???"}}x{{currentOutput.height || "???"}} - </span>
-            <span>Frames: {{currentOutput.frames || "1"}}</span>
-            <span v-if="currentOutput.frames && currentOutput.frames > 1"> - FPS: {{currentOutput.fps || "Unknown"}}</span>
-            <span v-if="currentOutput.lora_meta"> - LoRA: {{currentOutput.lora_meta}}</span>
+            <div>Negative Prompt: {{currentOutput?.prompt?.split("###")[1] || "None"}}</div>
+            <span>Model: {{currentOutput?.modelName || "Unknown"}} - </span>
+            <span>Sampler: {{currentOutput?.sampler_name || "Unknown"}} - </span>
+            <span>Scheduler: {{currentOutput?.scheduler || "Unknown"}} - </span>
+            <span>Seed: {{currentOutput?.seed || "Unknown"}} - </span>
+            <span>Steps: {{currentOutput?.steps || "Unknown"}} - </span>
+            <span>CFG Scale: {{currentOutput?.cfg_scale || "Unknown"}} - </span>
+            <span>Clip Skip: {{currentOutput?.clip_skip ?? "Unknown"}} - </span>
+            <span>Dimensions: {{currentOutput?.width || "???"}}x{{currentOutput?.height || "???"}} - </span>
+            <span>Frames: {{currentOutput?.frames || "1"}}</span>
+            <span v-if="currentOutput?.frames && currentOutput.frames > 1"> - FPS: {{currentOutput.fps || "Unknown"}}</span>
+            <span v-if="currentOutput?.lora_meta"> - LoRA: {{currentOutput.lora_meta}}</span>
             <br/>
             <b>
-            <span v-if="currentOutput.frames && currentOutput.frames > 1"> <a href="#" @click.prevent="downloadGif" style="cursor: pointer; color: var(--el-color-primary);">[Download GIF]</a></span>
-            <span v-if="currentOutput.extra_avi"> - <a href="#" @click.prevent="downloadAvi" style="cursor: pointer; color: var(--el-color-primary);">[Download AVI]</a></span>
-            <span v-if="currentOutput.final_frame"> - <a href="#" @click.prevent="extendVideo" style="cursor: pointer; color: var(--el-color-primary);">[Extend Video]</a></span>
+            <span v-if="currentOutput?.frames && currentOutput.frames > 1"> <a href="#" @click.prevent="downloadGif" style="cursor: pointer; color: var(--el-color-primary);">[Download GIF]</a></span>
+            <span v-if="currentOutput?.extra_avi"> - <a href="#" @click.prevent="downloadAvi" style="cursor: pointer; color: var(--el-color-primary);">[Download AVI]</a></span>
+            <span v-if="currentOutput?.final_frame"> - <a href="#" @click.prevent="extendVideo" style="cursor: pointer; color: var(--el-color-primary);">[Extend Video]</a></span>
             </b>
         </div>
         <template #footer>
             <ImageActions
+                v-if="currentOutput"
                 :image-data="currentOutput"
-                :on-delete="handleClose" />
+                :on-delete="handleDelete" />
         </template>
     </el-dialog>
 </template>

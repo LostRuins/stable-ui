@@ -4,7 +4,6 @@ import { useOutputStore, type ImageData } from '@/stores/outputs';
 import {
     StarFilled,
     Star,
-    Refresh,
     Link,
     Delete,
     Download,
@@ -13,12 +12,9 @@ import {
     ElButton,
     ElMessage,
     ElMessageBox,
-    ElDialog,
 } from 'element-plus';
 import { deflateRaw } from 'pako';
 import { downloadImage, downloadVideo } from '@/utils/download'
-import { db } from '@/utils/db';
-import { ref } from 'vue';
 import { useUIStore } from "@/stores/ui";
 
 const store = useGeneratorStore();
@@ -26,7 +22,7 @@ const outputStore = useOutputStore();
 
 const props = defineProps<{
     imageData: ImageData;
-    onDelete?: Function;
+    onDelete?: (id: number) => void;
     showDismiss?: boolean;
 }>();
 
@@ -40,9 +36,9 @@ const confirmDelete = () => {
             type: 'warning',
         }
     )
-        .then(() => {
-            outputStore.deleteOutput(props.imageData.id);
-            if (props.onDelete !== undefined) props.onDelete(props.imageData.id);
+        .then(async () => {
+            await outputStore.deleteOutput(props.imageData.id);
+            props.onDelete?.(props.imageData.id);
             ElMessage({
                 type: 'success',
                 message: 'Deleted Image',
