@@ -222,20 +222,48 @@ export const useGeneratorStore = defineStore("generator", () => {
     const abortController = ref<AbortController | null>(null);
     const queue = ref<ICurrentGeneration[]>([]);
     const lastImageGenkey = useLocalStorage("lastImageGenkey", "");
+    const recoveringLastImage = ref(false);
     const lastImageRecoveryUrl = computed(() => {
         if (!lastImageGenkey.value) return "";
-        return buildApiUrl(useOptionsStore().baseURL, `/sdapi/v1/get_last.png?genkey=${encodeURIComponent(lastImageGenkey.value)}`);
+        return buildApiUrl(useOptionsStore().baseURL, `/sdapi/v1/get_last.json?genkey=${encodeURIComponent(lastImageGenkey.value)}`);
     });
-    const lastImageRecoveryAvailable = computed(() => lastImageRecoveryUrl.value !== "" && !generating.value);
+    const lastImageRecoveryAvailable = computed(() => lastImageRecoveryUrl.value !== "" && !generating.value && !recoveringLastImage.value);
 
     function clearLastImageGenkey() {
         lastImageGenkey.value = "";
     }
 
-    function openLastImageRecovery() {
-        if (!lastImageRecoveryUrl.value) return;
-        window.open(lastImageRecoveryUrl.value, "_blank", "noopener");
-        clearLastImageGenkey();
+    async function recoverLastGeneratedImage() {
+        if (!lastImageRecoveryUrl.value || recoveringLastImage.value) return;
+
+        recoveringLastImage.value = true;
+        try {
+            const response = await fetch(lastImageRecoveryUrl.value);
+            if (!response.ok) {
+                if (response.status === 404) clearLastImageGenkey();
+                throw new Error(`server returned ${response.status}`);
+            }
+
+            const recovered = await response.json();
+            if (!Array.isArray(recovered.images) || !recovered.images[0]) {
+                throw new Error("server returned an invalid recovery payload");
+            }
+
+            const recoveredParams = recovered.parameters ?? recovered.params ?? {};
+            outputs.value = [];
+            useUIStore().showGeneratedImages = false;
+            await processImages([{
+                ...recovered,
+                prompt: recovered.prompt ?? recoveredParams.prompt ?? "",
+                params: recoveredParams,
+                models: recovered.models ?? [recovered.modelName ?? "(Unknown model)"],
+            }], true);
+        } catch (error) {
+            const detail = error instanceof Error ? error.message : String(error);
+            useUIStore().raiseError(`Failed to recover the last generated image: ${detail}`, false);
+        } finally {
+            recoveringLastImage.value = false;
+        }
     }
 
     const minDimensions = ref(64);
@@ -634,7 +662,7 @@ export const useGeneratorStore = defineStore("generator", () => {
     /**
      * Called when a generation is finished.
      * */
-    async function processImages(finalImages: any[]) {
+    async function processImages(finalImages: any[], finalizeRecovery = false) {
         const store = useOutputStore();
 
         console.log(finalImages)
@@ -704,7 +732,7 @@ export const useGeneratorStore = defineStore("generator", () => {
             ...outputs.value,
         ].sort((a,b) => a.index - b.index);
 
-        if (outputs.value.length === queue.value.length) {
+        if (finalizeRecovery || outputs.value.length === queue.value.length) {
             queue.value = [];
             generating.value = false;
             useUIStore().showGeneratedImages = true;
@@ -1216,10 +1244,11 @@ export const useGeneratorStore = defineStore("generator", () => {
         progressInfo,
         progressInterval,
         lastImageGenkey,
+        recoveringLastImage,
         lastImageRecoveryUrl,
         lastImageRecoveryAvailable,
         clearLastImageGenkey,
-        openLastImageRecovery,
+        recoverLastGeneratedImage,
         // Constants
         validGeneratorTypes,
         sourceGeneratorTypes,

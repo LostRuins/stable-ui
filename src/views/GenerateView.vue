@@ -583,10 +583,8 @@ handleUrlParams();
                 <el-link
                     v-if="store.lastImageRecoveryAvailable"
                     class="last-image-recovery"
-                    :href="store.lastImageRecoveryUrl"
-                    target="_blank"
                     type="primary"
-                    @click.prevent="store.openLastImageRecovery()"
+                    @click="store.recoverLastGeneratedImage()"
                 >
                     Recover last generated image
                 </el-link>
