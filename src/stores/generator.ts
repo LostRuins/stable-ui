@@ -222,7 +222,16 @@ export const useGeneratorStore = defineStore("generator", () => {
     const abortController = ref<AbortController | null>(null);
     const queue = ref<ICurrentGeneration[]>([]);
     const lastImageGenkey = useLocalStorage("lastImageGenkey", "");
+    const lastImageRecoveryAttemptedGenkey = useLocalStorage("lastImageRecoveryAttemptedGenkey", "");
     const recoveringLastImage = ref(false);
+
+    // A recovery attempt remains retryable for the lifetime of this page. If the
+    // page is loaded again afterward, treat that reload as abandoning the attempt.
+    if (lastImageRecoveryAttemptedGenkey.value === lastImageGenkey.value) {
+        lastImageGenkey.value = "";
+    }
+    lastImageRecoveryAttemptedGenkey.value = "";
+
     const lastImageRecoveryUrl = computed(() => {
         if (!lastImageGenkey.value) return "";
         return buildApiUrl(useOptionsStore().baseURL, `/sdapi/v1/get_last.json?genkey=${encodeURIComponent(lastImageGenkey.value)}`);
@@ -231,16 +240,17 @@ export const useGeneratorStore = defineStore("generator", () => {
 
     function clearLastImageGenkey() {
         lastImageGenkey.value = "";
+        lastImageRecoveryAttemptedGenkey.value = "";
     }
 
     async function recoverLastGeneratedImage() {
         if (!lastImageRecoveryUrl.value || recoveringLastImage.value) return;
 
+        lastImageRecoveryAttemptedGenkey.value = lastImageGenkey.value;
         recoveringLastImage.value = true;
         try {
             const response = await fetch(lastImageRecoveryUrl.value);
             if (!response.ok) {
-                if (response.status === 404) clearLastImageGenkey();
                 throw new Error(`server returned ${response.status}`);
             }
 
@@ -874,6 +884,7 @@ export const useGeneratorStore = defineStore("generator", () => {
         try {
             const genkey = getNewGenkey();
             lastImageGenkey.value = genkey;
+            lastImageRecoveryAttemptedGenkey.value = "";
             const requestParameters = {
                 ...parameters,
                 genkey,
