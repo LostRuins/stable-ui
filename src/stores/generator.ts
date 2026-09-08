@@ -13,6 +13,7 @@ import { extractLorasFromPrompt } from "@/utils/loras";
 import { parsePromptSegments, expandPromptSegments } from "@/utils/expansions";
 import { convertToBase64 } from "@/utils/base64";
 import { buildApiUrl } from "@/utils/api";
+import { parseExtraRequestFields } from "@/utils/extraRequestFields";
 function getDefaultStore() {
     return {
         steps: 20,
@@ -121,6 +122,7 @@ export const useGeneratorStore = defineStore("generator", () => {
     const promptHistory = useLocalStorage<IPromptHistory[]>("promptHistory", []);
     const negativePrompt = ref("");
     const negativePromptLibrary = useLocalStorage<string[]>("negativeLibrary", []);
+    const extraRequestFields = ref("");
     const params = ref(getDefaultStore());
     const timer = ref({
         interval: 0 as number | NodeJS.Timeout,
@@ -318,6 +320,7 @@ export const useGeneratorStore = defineStore("generator", () => {
      * */
     function resetStore()  {
         params.value = getDefaultStore();
+        extraRequestFields.value = "";
         inpainting.value = getDefaultImageProps();
         img2img.value = getDefaultImageProps();
         videoStartFrame.value = null;
@@ -358,6 +361,14 @@ export const useGeneratorStore = defineStore("generator", () => {
         if (!validGeneratorTypes.includes(type)) return [];
 
         if (prompt.value === "") return generationFailed("Failed to generate: No prompt submitted.");
+
+        let parsedExtraRequestFields: Record<string, unknown>;
+        try {
+            parsedExtraRequestFields = parseExtraRequestFields(extraRequestFields.value);
+        } catch (error) {
+            const detail = error instanceof Error ? error.message : String(error);
+            return generationFailed(`Failed to generate: ${detail}`);
+        }
 
         const canvasStore = useCanvasStore();
         const uiStore = useUIStore();
@@ -588,6 +599,7 @@ export const useGeneratorStore = defineStore("generator", () => {
             {
                 newgen.params["kcpp_extra_args"] = kcppExtraArgs;
             }
+            Object.assign(newgen.params, parsedExtraRequestFields);
             paramsCached.push(newgen);
         }
 
@@ -1225,6 +1237,7 @@ export const useGeneratorStore = defineStore("generator", () => {
         addLoraRow,
         removeLoraRow,
         negativePrompt,
+        extraRequestFields,
         generating,
         negativePromptLibrary,
         minDimensions,

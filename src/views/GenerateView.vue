@@ -47,6 +47,7 @@ import InterrogationView from '@/components/InterrogationView.vue';
 import { formatSeconds } from '@/utils/format';
 import { parsePromptSegments } from '@/utils/expansions';
 import { extractLoraRowsFromPrompt, allocateLoraRows } from '@/utils/loras';
+import { parseExtraRequestFields } from '@/utils/extraRequestFields';
 
 const breakpoints = useBreakpoints(breakpointsTailwind);
 const isMobile = breakpoints.smallerOrEqual('md');
@@ -172,7 +173,18 @@ const rules = reactive<FormRules>({
         required: true,
         message: 'Please input prompt',
         trigger: 'change'
-    }]
+    }],
+    extraRequestFields: [{
+        validator: (_rule: unknown, value: string, callback: (error?: Error) => void) => {
+            try {
+                parseExtraRequestFields(value);
+                callback();
+            } catch (error) {
+                callback(error instanceof Error ? error : new Error(String(error)));
+            }
+        },
+        trigger: 'change'
+    }],
 });
 
 function updateCurrentSampler(newSamplers: string[]) {
@@ -491,6 +503,16 @@ handleUrlParams();
                         <form-switch label="Send as RefImg"    prop="send_as_refimg"   v-model="store.params.send_as_refimg"  v-if="store.generatorType === 'Img2Img'"  info="Instead of regular Img2Img, send the image as a reference image for edit models." />
                     </el-col>
                 </el-row>
+                <form-input
+                    label="Extra Fields"
+                    prop="extraRequestFields"
+                    v-model="store.extraRequestFields"
+                    :autosize="{ minRows: 2, maxRows: 8 }"
+                    resize="vertical"
+                    type="textarea"
+                    placeholder='{"some_field": 1234}'
+                    info="Optional JSON object merged into the final generation request. These values override fields configured above."
+                />
                 <el-collapse v-model="loraListOpen" class="lora-list-collapse">
                     <el-collapse-item name="lora-list">
                         <template #title>
