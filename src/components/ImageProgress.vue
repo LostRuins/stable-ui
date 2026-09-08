@@ -54,8 +54,11 @@ defineEmits(["showGenerated"]);
 
         <div class="gen-text">
             <span v-if="generated !== undefined && total !== undefined && generated === total && generated > 0">All done!</span>
-            <span v-else-if="textInfo">{{ truncate(textInfo, 60) }}</span>
-            <span v-else>Generating{{ellipsis}}{{'&nbsp;'.repeat(3 - ellipsis.length)}}<br><sup>{{ elapsed }}</sup></span>
+            <span v-else>
+                <span v-if="textInfo">{{ truncate(textInfo, 60) }}</span>
+                <span v-else>Generating{{ellipsis}}{{'&nbsp;'.repeat(3 - ellipsis.length)}}</span>
+                <br><sup>{{ elapsed }}</sup>
+            </span>
         </div>
         <div v-if="previewImage" class="preview-container">
             <img
