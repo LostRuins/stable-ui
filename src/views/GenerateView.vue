@@ -40,6 +40,7 @@ import GeneratedCarousel from '../components/GeneratedCarousel.vue'
 import CustomCanvas from '../components/CustomCanvas.vue';
 import GeneratorMenuItem from '../components/GeneratorMenuItem.vue';
 import { useUIStore } from '@/stores/ui';
+import { useOptionsStore } from '@/stores/options';
 import { useCanvasStore } from '@/stores/canvas';
 import { breakpointsTailwind, computedAsync, useBreakpoints } from '@vueuse/core';
 import handleUrlParams from "@/router/handleUrlParams";
@@ -54,6 +55,7 @@ const isMobile = breakpoints.smallerOrEqual('md');
 
 const store = useGeneratorStore();
 const uiStore = useUIStore();
+const optionsStore = useOptionsStore();
 const canvasStore = useCanvasStore();
 
 const availableSamplers = computedAsync(async () => {
@@ -603,12 +605,20 @@ handleUrlParams();
                     <generated-carousel v-if="uiStore.showGeneratedImages && store.outputs.length !== 0" />
                 </el-card>
                 <el-link
-                    v-if="store.lastImageRecoveryAvailable"
+                    v-if="store.lastImageRecoveryAvailable && optionsStore.keepImageGenOnDisconnect === 'Enabled'"
                     class="last-image-recovery"
                     type="primary"
                     @click="store.recoverLastGeneratedImage()"
                 >
                     Recover last generated image
+                </el-link>
+                <el-link
+                    v-else-if="store.lastImageRecoveryAvailable"
+                    class="last-image-recovery"
+                    type="primary"
+                    @click="optionsStore.keepImageGenOnDisconnect = 'Enabled'"
+                >
+                    Enable Poor Connection Mode for image recovery
                 </el-link>
             </div>
         </el-form>
