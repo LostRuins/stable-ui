@@ -595,6 +595,7 @@ export const useGeneratorStore = defineStore("generator", () => {
             {
                 kcppExtraArgs["keep_image_gen_on_disconnect"] = true;
             }
+            newgen.params["keepalive"] = true; //send keepalive
             if (Object.keys(kcppExtraArgs).length > 0)
             {
                 newgen.params["kcpp_extra_args"] = kcppExtraArgs;
@@ -1030,7 +1031,7 @@ export const useGeneratorStore = defineStore("generator", () => {
     const loraList = ref<ILoraListItem[]>([]);
 
     function addLoraRow() {
-        loraList.value = [...loraList.value, { lora: "", multiplier: 0 }];
+        loraList.value = [...loraList.value, { lora: "", multiplier: 1 }];
     }
 
     function removeLoraRow(index: number) {
