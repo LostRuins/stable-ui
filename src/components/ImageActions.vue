@@ -75,6 +75,7 @@ async function copyLink(imageData: ImageData) {
         height: imageData.height ? imageData.height : undefined,
         steps: imageData.steps,
         cfg_scale: imageData.cfg_scale,
+        eta: imageData.eta,
         sampler_name: imageData.sampler_name,
         model_name: imageData.modelName,
         seed: imageData.seed,
@@ -93,7 +94,9 @@ async function copyLink(imageData: ImageData) {
     let toBeCompressed = "";
     let paramChar = "";
     for (const [key, value] of Object.entries(linkParams)) {
-        if (!value) continue;
+        // eta=0 is meaningful (it overrides the sampler's default eta of 1), so
+        // only values that are truly absent are skipped
+        if (value === undefined || value === null || value === "" || (value === 0 && key !== "eta")) continue;
         let filteredValue = value;
         if (typeof value === "string") filteredValue = encodeURIComponent(value);
         else if (Array.isArray(value)) filteredValue = JSON.stringify(value);

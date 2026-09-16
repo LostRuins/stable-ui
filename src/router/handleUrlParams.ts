@@ -45,6 +45,7 @@ const handleUrlParams = function() {
         seed: Number(paramMap.get("seed")) || -1,
         steps: Number(paramMap.get("steps") || 20),
         cfg_scale: Number(paramMap.get("cfg_scale") || 5),
+        eta: paramMap.get("eta") ? Number(paramMap.get("eta")) : undefined,
         height: Number(paramMap.get("height") || 512),
         width: Number(paramMap.get("width") || 512),
         clip_skip: Number(paramMap.get("clip_skip") || 0),
