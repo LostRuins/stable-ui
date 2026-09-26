@@ -10,6 +10,7 @@ import { liveQuery, type IndexableType } from "dexie";
 import { from } from 'rxjs';
 import { useObservable } from "@vueuse/rxjs";
 import { useLiveQuery } from "@/utils/useLiveQuery";
+import { ensureUrl, evict } from "@/utils/blobCache";
 
 export interface ImageData {
     id: number;
@@ -36,6 +37,82 @@ export interface ImageData {
     lora_meta?: string;
 }
 
+/**
+ * A string-free view of an ImageData row, for reactively exposed state
+ * (carousel outputs, gallery page, dialog).
+ *
+ * Carries every ImageData metadata field EXCEPT image/extra_avi/
+ * final_frame, plus:
+ * - imageUrl: the stable blob: URL of the row's image (or, on decode
+ *   failure, the original data-URL string — degrading that one row to the
+ *   old behavior);
+ * - hasAvi / hasFinalFrame: presence flags replacing the string fields
+ *   (button visibility);
+ * - type: carried from the generator's CarouselOutput (always "image"
+ *   today); bare DB rows have no source, so the default is "image".
+ *
+ * INVARIANT: no object that lives in reactive state ever holds the
+ * data-URL strings. Rows coming out of Dexie are mapped through
+ * toViewModel immediately; the raw row becomes garbage after the map.
+ */
+export interface OutputViewModel {
+    id: number;
+    imageUrl: string;
+    prompt?: string;
+    sampler_name?: string;
+    seed?: number;
+    steps?: number;
+    cfg_scale?: number;
+    height?: number;
+    width?: number;
+    modelName?: string;
+    starred?: 1 | 0;
+    clip_skip?: number;
+    frames?: number;
+    fps?: number;
+    scheduler?: string;
+    enable_hr?: 1 | 0;
+    send_as_refimg?: 1 | 0;
+    eta?: number;
+    flow_shift?: number;
+    lora_meta?: string;
+    // Not declared on the ImageData interface, but rows carry it at
+    // runtime (it is a Dexie index; importFromZip writes it and the
+    // "unrated" filter queries it) — comes through the `...rest` spread.
+    rated?: number;
+    hasAvi: boolean;
+    hasFinalFrame: boolean;
+    type: "image" | "video";
+}
+
+/**
+ * Maps a full ImageData row (with its data-URL strings) to a
+ * string-free OutputViewModel. Pure function: the row's image string is
+ * fed to the blob cache (built once per (id, field)), never stored.
+ */
+export function toViewModel(row: ImageData, type: "image" | "video" = "image"): OutputViewModel {
+    let imageUrl: string;
+    try {
+        imageUrl = ensureUrl(row.id, "image", row.image);
+    } catch {
+        // Degrade to the old behavior for this one row: render the raw data URL.
+        imageUrl = row.image;
+    }
+
+    // Destructure the string fields OUT — the returned object must not hold
+    // image/extra_avi/final_frame.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { image, extra_avi, final_frame, ...rest } = row;
+
+    return {
+        ...rest,
+        imageUrl,
+        hasAvi: extra_avi != null && extra_avi !== "",
+        hasFinalFrame: final_frame != null && final_frame !== "",
+        type,
+    };
+}
+
 export const useOutputStore = defineStore("outputs", () => {
     const outputsLength = useObservable<number, number>(
         from(
@@ -49,7 +126,7 @@ export const useOutputStore = defineStore("outputs", () => {
     const sortBy = useLocalStorage<"Newest" | "Oldest">("sortOutputsBy", "Oldest");
     const currentLayout = useLocalStorage<"grid" | "dynamic">("currentImagesLayout", "dynamic");
     const filterBy = ref<"all" | "favourited" | "unfavourited" | 'unrated'>("all");
-    const currentOutputs = useLiveQuery<ImageData[], ImageData[]>(
+    const currentOutputs = useLiveQuery<OutputViewModel[], OutputViewModel[]>(
         () => {
             const store = useOptionsStore();
 
@@ -68,11 +145,16 @@ export const useOutputStore = defineStore("outputs", () => {
                 sortedOutputs = sortedOutputs.reverse();
             }
 
-            if (store.pageless === "Enabled") return sortedOutputs.toArray();
-            return sortedOutputs
-                .offset((currentPage.value - 1) * store.pageSize)
-                .limit(store.pageSize)
-                .toArray();
+            const query = store.pageless === "Enabled"
+                ? sortedOutputs
+                : sortedOutputs
+                    .offset((currentPage.value - 1) * store.pageSize)
+                    .limit(store.pageSize);
+            // Map the raw rows (with data-URL strings) to string-free view models:
+            // the strings live on the heap only for this tick's structured clone,
+            // the reactive state holds the view models (ensureUrl is a cache hit
+            // after the first tick per id)
+            return query.toArray().then(rows => rows.map(row => toViewModel(row)));
         },
         [ toRef(useOptionsStore(), "pageless"), toRef(useOptionsStore(), "pageSize"), currentPage, sortBy, filterBy ],
         {
@@ -193,8 +275,10 @@ export const useOutputStore = defineStore("outputs", () => {
     /**
      * Deletes an output corresponding to an ID
      * */
-    function deleteOutput(id: number) {
-        return db.outputs.delete(id);
+    async function deleteOutput(id: number) {
+        await db.outputs.delete(id);
+        // THE ONLY eviction site: drop the row's cached blobs/URLs once the row is gone
+        evict(id);
     }
 
     /**
@@ -204,7 +288,10 @@ export const useOutputStore = defineStore("outputs", () => {
         const uiStore = useUIStore();
         uiStore.selected = [];
         uiStore.multiSelect = false;
-        return db.outputs.bulkDelete(ids);
+        await db.outputs.bulkDelete(ids);
+        // Evict per id: delete-all is a plain bulkDelete of all ids (the former
+        // db.outputs.clear() special case was dead code, removed separately)
+        for (const id of ids) evict(id);
     }
 
     return {
