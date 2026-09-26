@@ -204,9 +204,6 @@ export const useOutputStore = defineStore("outputs", () => {
         const uiStore = useUIStore();
         uiStore.selected = [];
         uiStore.multiSelect = false;
-        if (ids === await db.outputs.toCollection().primaryKeys()) {
-            return db.outputs.clear();
-        }
         return db.outputs.bulkDelete(ids);
     }
 
