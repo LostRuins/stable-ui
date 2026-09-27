@@ -10,12 +10,12 @@ import {
     CircleCheckFilled,
 } from '@element-plus/icons-vue'
 import { useUIStore } from '@/stores/ui';
-import type {  ImageData } from '@/stores/outputs';
+import type { OutputViewModel } from '@/stores/outputs';
 import { onLongPress, useIntersectionObserver } from '@vueuse/core';
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const props = defineProps<{
-    imageData: ImageData
+    imageData: OutputViewModel
 }>();
 
 const uiStore = useUIStore();
@@ -45,7 +45,7 @@ const isSelected = computed(() => uiStore.selected.includes(props.imageData.id))
     <div class="relative" ref="containerRef">
         <el-image
             class="thumbnail"
-            :src="imageData.image"
+            :src="imageData.imageUrl"
             @click="uiStore.activeModal = imageData.id"
             fit="cover"
             loading="lazy"

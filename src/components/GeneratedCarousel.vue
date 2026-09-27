@@ -52,9 +52,9 @@ watch(
                 @change="onChange"
             >
                 <el-carousel-item v-for="imageData in store.outputs" :key="imageData.output.id" style="display: flex; justify-content: center;">
-                    <video :src="imageData.output.image" controls v-if="imageData.type === 'video'" style="max-width: 100%; height: 100%;" />
+                    <video :src="imageData.output.imageUrl" controls v-if="imageData.type === 'video'" style="max-width: 100%; height: 100%;" />
                     <el-image
-                        :src="imageData.output.image"
+                        :src="imageData.output.imageUrl"
                         style="width: 100%; height: 100%;"
                         fit="scale-down"
                         @click="() => uiStore.activeModal = imageData.output.id"

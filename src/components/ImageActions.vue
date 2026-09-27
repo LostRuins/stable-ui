@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useGeneratorStore } from '@/stores/generator';
-import { useOutputStore, type ImageData } from '@/stores/outputs';
+import { useOutputStore, type ImageData, type OutputViewModel } from '@/stores/outputs';
+import { db } from '@/utils/db';
 import {
     StarFilled,
     Star,
@@ -21,10 +22,20 @@ const store = useGeneratorStore();
 const outputStore = useOutputStore();
 
 const props = defineProps<{
-    imageData: ImageData;
+    imageData: ImageData | OutputViewModel;
     onDelete?: (id: number) => void;
     showDismiss?: boolean;
 }>();
+
+/**
+ * ImageActions receives either a full ImageData row (gallery dialog) or a
+ * string-free OutputViewModel (generation carousel). Consumers that need the
+ * data-URL strings (image/extra_avi/final_frame) re-read the row from the DB
+ * at click time; for a full row this is the identity, so their behavior is
+ * unchanged.
+ * */
+const rowOf = async (imageData: ImageData | OutputViewModel): Promise<ImageData | undefined> =>
+    "image" in imageData ? imageData : db.outputs.get(imageData.id);
 
 const confirmDelete = () => {
     ElMessageBox.confirm(
@@ -46,18 +57,20 @@ const confirmDelete = () => {
         })
 }
 
-const downloadImageButton = (imageData: ImageData) => {
-    if (imageData.extra_avi)
+const downloadImageButton = async (imageData: ImageData | OutputViewModel) => {
+    const row = await rowOf(imageData);
+    if (!row) return;
+    if (row.extra_avi)
     {
         //its a video with avi
         // extra_avi format: data:video/avi;base64,AAAA...
-        const base64 = imageData.extra_avi.split(',')[1];
+        const base64 = row.extra_avi.split(',')[1];
         if (!base64) return;
-        const filename = `${imageData.seed}-${imageData.prompt}.avi`;
+        const filename = `${row.seed}-${row.prompt}.avi`;
         downloadVideo(base64,filename);
         return;
     } else {
-        downloadImage(imageData.image, `${imageData.seed}-${imageData.prompt}`);
+        downloadImage(row.image, `${row.seed}-${row.prompt}`);
     }
 }
 
@@ -67,27 +80,29 @@ const dismissImage = () => {
     useGeneratorStore().clearQueue();
 }
 
-async function copyLink(imageData: ImageData) {
+async function copyLink(imageData: ImageData | OutputViewModel) {
+    const row = await rowOf(imageData);
+    if (!row) return;
     const urlBase = window.location.origin;
     const linkParams = {
-        prompt: imageData.prompt,
-        width: imageData.width ? imageData.width : undefined,
-        height: imageData.height ? imageData.height : undefined,
-        steps: imageData.steps,
-        cfg_scale: imageData.cfg_scale,
-        eta: imageData.eta,
-        sampler_name: imageData.sampler_name,
-        model_name: imageData.modelName,
-        seed: imageData.seed,
-        clip_skip: imageData.clip_skip,
-        frames: imageData.frames,
-        fps: imageData.fps,
-        scheduler: imageData.scheduler,
-        extra_avi: imageData.extra_avi,
-        final_frame: imageData.final_frame,
-        enable_hr: imageData.enable_hr,
-        send_as_refimg: imageData.send_as_refimg,
-        lora_meta: imageData.lora_meta
+        prompt: row.prompt,
+        width: row.width ? row.width : undefined,
+        height: row.height ? row.height : undefined,
+        steps: row.steps,
+        cfg_scale: row.cfg_scale,
+        eta: row.eta,
+        sampler_name: row.sampler_name,
+        model_name: row.modelName,
+        seed: row.seed,
+        clip_skip: row.clip_skip,
+        frames: row.frames,
+        fps: row.fps,
+        scheduler: row.scheduler,
+        extra_avi: row.extra_avi,
+        final_frame: row.final_frame,
+        enable_hr: row.enable_hr,
+        send_as_refimg: row.send_as_refimg,
+        lora_meta: row.lora_meta
     }
     const path = window.location.pathname.replace("images", "");
     let link = `${urlBase}${path}?share=`;
@@ -111,6 +126,21 @@ async function copyLink(imageData: ImageData) {
         message: 'Copied shareable link to clipboard',
     });
 }
+
+async function startTxt2Img(imageData: ImageData | OutputViewModel) {
+    const row = await rowOf(imageData);
+    if (row) store.generateText2Img(row);
+}
+
+async function startImg2Img(imageData: ImageData | OutputViewModel) {
+    const row = await rowOf(imageData);
+    if (row) store.generateImg2Img(row.image);
+}
+
+async function startInpainting(imageData: ImageData | OutputViewModel) {
+    const row = await rowOf(imageData);
+    if (row) store.generateInpainting(row.image);
+}
 </script>
 
 <style scoped>
@@ -126,9 +156,9 @@ async function copyLink(imageData: ImageData) {
     <el-button class="compact-button" @click="downloadImageButton(imageData)" type="success" size="small" :icon="Download" plain>Download</el-button>
     <el-button class="compact-button" v-if="!imageData.starred" @click="outputStore.toggleStarred(imageData.id)" type="warning" size="small" :icon="Star" plain>Star</el-button>
     <el-button class="compact-button" v-if="imageData.starred" @click="outputStore.toggleStarred(imageData.id)" type="warning" size="small" :icon="StarFilled" plain>Unstar</el-button>
-    <el-button class="compact-button" @click="store.generateText2Img(imageData)" type="success" size="small" plain>Txt2img</el-button>
-    <el-button class="compact-button" @click="store.generateImg2Img(imageData.image)" type="success" size="small" plain>Img2img</el-button>
-    <el-button class="compact-button" @click="store.generateInpainting(imageData.image)" type="success" size="small" plain>Inpaint</el-button>
+    <el-button class="compact-button" @click="startTxt2Img(imageData)" type="success" size="small" plain>Txt2img</el-button>
+    <el-button class="compact-button" @click="startImg2Img(imageData)" type="success" size="small" plain>Img2img</el-button>
+    <el-button class="compact-button" @click="startInpainting(imageData)" type="success" size="small" plain>Inpaint</el-button>
     <el-button class="compact-button" v-if="showDismiss" @click="dismissImage()" type="success" size="small" plain>Dismiss</el-button>
     <el-button class="compact-button" @click="copyLink(imageData)" type="success" :icon="Link" size="small" plain>Share</el-button>
 </template>

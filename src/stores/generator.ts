@@ -1,6 +1,6 @@
 import { computed, ref, watch } from "vue";
 import { defineStore } from "pinia";
-import { useOutputStore, type ImageData } from "./outputs";
+import { useOutputStore, toViewModel, type ImageData, type OutputViewModel } from "./outputs";
 import { useUIStore } from "./ui";
 import { useOptionsStore } from "./options";
 import router from "@/router";
@@ -110,7 +110,7 @@ interface IMultiSelect {
 interface CarouselOutput {
     type: "image" | "video";
     index: number;
-    output: ImageData;
+    output: OutputViewModel;
 }
 
 export const useGeneratorStore = defineStore("generator", () => {
@@ -750,7 +750,9 @@ export const useGeneratorStore = defineStore("generator", () => {
             ...newOutputs.map(el => ({
                 type: "image",
                 index,
-                output: el,
+                // string-free view model: the row's data-URL strings are fed to the
+                // blob cache (built once per id) and never stored in reactive state
+                output: toViewModel(el, "image"),
             } as CarouselOutput)),
             ...outputs.value,
         ].sort((a,b) => a.index - b.index);

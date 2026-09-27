@@ -6,7 +6,7 @@ import { SwipeDirection, useSwipe } from '@vueuse/core';
 import ImageActions from '../components/ImageActions.vue';
 import { computed, ref, watch } from 'vue';
 import { useUIStore } from '@/stores/ui';
-import { useOutputStore, type ImageData } from '@/stores/outputs';
+import { useOutputStore, toViewModel, type OutputViewModel } from '@/stores/outputs';
 import { db } from '@/utils/db';
 import { useGeneratorStore } from '@/stores/generator';
 import { downloadImage, downloadVideo } from '@/utils/download';
@@ -32,7 +32,7 @@ const modalOpen = computed({
     }
 });
 
-const currentOutput = ref<ImageData | undefined>(store.currentOutputs[0]);
+const currentOutput = ref<OutputViewModel | undefined>(store.currentOutputs[0]);
 
 watch(
     () => uiStore.activeModal,
@@ -55,7 +55,7 @@ watch(
             return;
         }
 
-        currentOutput.value = persistedOutput;
+        currentOutput.value = toViewModel(persistedOutput);
     }
 )
 
@@ -69,26 +69,39 @@ function handleDelete(id: number) {
     handleClose();
 }
 
-function extendVideo()
-{
-    if (!currentOutput.value?.final_frame) return;
-    const finalframe = currentOutput.value.final_frame;
-    const gstore = useGeneratorStore();
-    gstore.generateImg2Img(finalframe);
+function extendVideo() {
+    // the view model has no final_frame string: re-read the row at click time
+    const id = currentOutput.value?.id;
+    if (id === undefined) return;
+    db.outputs.get(id).then(row => {
+        if (row?.final_frame) {
+            const gstore = useGeneratorStore();
+            gstore.generateImg2Img(row.final_frame);
+        }
+    });
 }
 
 function downloadGif() {
-    if (!currentOutput.value?.image) return;
-    downloadImage(currentOutput.value.image, `${currentOutput.value.seed}-${currentOutput.value.prompt}`);
+    // the view model has no image string: re-read the row at click time
+    const id = currentOutput.value?.id;
+    if (id === undefined) return;
+    db.outputs.get(id).then(row => {
+        if (row) downloadImage(row.image, `${row.seed}-${row.prompt}`);
+    });
 }
 
 function downloadAvi() {
-    if (!currentOutput.value?.extra_avi) return;
-    // extra_avi format: data:video/avi;base64,AAAA...
-    const base64 = currentOutput.value.extra_avi.split(',')[1];
-    if (!base64) return;
-    const filename = `output-${currentOutput.value.id ?? 'video'}.avi`;
-    downloadVideo(base64,filename);
+    // the view model has no extra_avi string: re-read the row at click time
+    const id = currentOutput.value?.id;
+    if (id === undefined) return;
+    db.outputs.get(id).then(row => {
+        if (!row?.extra_avi) return;
+        // extra_avi format: data:video/avi;base64,AAAA...
+        const base64 = row.extra_avi.split(',')[1];
+        if (!base64) return;
+        const filename = `output-${row.id ?? 'video'}.avi`;
+        downloadVideo(base64, filename);
+    });
 }
 </script>
 
@@ -107,8 +120,8 @@ function downloadAvi() {
                 style="position: relative; display: flex; align-items: center; justify-content: center;"
             >
                 <img
-                    v-if="currentOutput?.image"
-                    :src="currentOutput?.image"
+                    v-if="currentOutput"
+                    :src="currentOutput?.imageUrl"
                     alt="Output image"
                     style="max-width: 100%; max-height: 100%; object-fit: contain;"
                 />
@@ -132,8 +145,8 @@ function downloadAvi() {
             <br/>
             <b>
             <span v-if="currentOutput?.frames && currentOutput.frames > 1"> <a href="#" @click.prevent="downloadGif" style="cursor: pointer; color: var(--el-color-primary);">[Download GIF]</a></span>
-            <span v-if="currentOutput?.extra_avi"> - <a href="#" @click.prevent="downloadAvi" style="cursor: pointer; color: var(--el-color-primary);">[Download AVI]</a></span>
-            <span v-if="currentOutput?.final_frame"> - <a href="#" @click.prevent="extendVideo" style="cursor: pointer; color: var(--el-color-primary);">[Extend Video]</a></span>
+            <span v-if="currentOutput?.hasAvi"> - <a href="#" @click.prevent="downloadAvi" style="cursor: pointer; color: var(--el-color-primary);">[Download AVI]</a></span>
+            <span v-if="currentOutput?.hasFinalFrame"> - <a href="#" @click.prevent="extendVideo" style="cursor: pointer; color: var(--el-color-primary);">[Extend Video]</a></span>
             </b>
         </div>
         <template #footer>
