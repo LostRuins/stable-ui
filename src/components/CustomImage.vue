@@ -12,6 +12,7 @@ import {
 import { useUIStore } from '@/stores/ui';
 import type { OutputViewModel } from '@/stores/outputs';
 import { onLongPress, useIntersectionObserver } from '@vueuse/core';
+import { useOutputBlobUrl } from '@/utils/useOutputBlobUrl';
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const props = defineProps<{
@@ -29,10 +30,12 @@ onLongPress(
 )
 
 const shouldRender = ref(false);
+const outputId = computed(() => props.imageData.id);
+const imageUrl = useOutputBlobUrl(outputId, shouldRender);
 useIntersectionObserver(
     containerRef,
     ([{ isIntersecting }]) => {
-        if (isIntersecting) shouldRender.value = isIntersecting;
+        shouldRender.value = isIntersecting;
     }, {
         rootMargin: '500px',
     }
@@ -45,12 +48,12 @@ const isSelected = computed(() => uiStore.selected.includes(props.imageData.id))
     <div class="relative" ref="containerRef">
         <el-image
             class="thumbnail"
-            :src="imageData.imageUrl"
+            :src="imageUrl"
             @click="uiStore.activeModal = imageData.id"
             fit="cover"
             loading="lazy"
             :style="`${isSelected && 'opacity: 0.5'}`"
-            v-if="shouldRender"
+            v-if="shouldRender && imageUrl"
         />
         <div class="image-action" v-if="shouldRender">
             <el-icon v-if="imageData.starred" class="starred-icon" :size="35" color="var(--el-color-warning)"><StarFilled /></el-icon>

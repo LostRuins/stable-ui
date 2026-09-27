@@ -1,36 +1,30 @@
 /**
- * Session-scoped cache of Blobs and their object URLs, keyed by output `id`
- * and image field ("image" | "extra_avi" | "final_frame").
+ * Session-scoped, byte-bounded cache of Blobs and object URLs.
  *
- * IndexedDB rows keep storing data-URL strings (persistence is untouched);
- * this cache is the in-memory representation: each data-URL string is decoded
- * into a Blob at most once, after which the multi-MB string no longer needs to
- * live on the JS heap. The decoded bytes live in the browser's blob store
- * (off the V8 heap in Chrome).
- *
- * The cache is deliberately NOT reactive (no ref/reactive wrapping) and dies
- * with the tab. Object URLs are revoked ONLY by evict() — nowhere else — so
- * callers may keep a URL returned here for as long as the row exists.
+ * IndexedDB continues to store data URLs. Mounted media retain cache entries;
+ * released entries remain available for reuse until the LRU exceeds its byte
+ * budget. This keeps URLs stable for right-click/open-in-new-tab without
+ * retaining every image visited during the session.
  */
 
 export type BlobField = "image" | "extra_avi" | "final_frame";
 
 const BLOB_FIELDS: readonly BlobField[] = ["image", "extra_avi", "final_frame"];
+const DEFAULT_MAX_BYTES = 512 * 1024 * 1024;
 
 interface CacheEntry {
     blob: Blob;
     url: string;
+    users: number;
+    lastUsed: number;
 }
 
 const cache = new Map<string, CacheEntry>();
+let cacheBytes = 0;
+let useCounter = 0;
 
 const keyOf = (id: number, field: BlobField) => `${id}:${field}`;
 
-/**
- * Decodes a base64 data-URL string into a Blob of the same type.
- * Synchronous, no canvas re-encoding (unlike convertBase64ToBlob, which may
- * detour through canvas when a contentType is passed).
- */
 function dataUrlToBlob(dataUrl: string): Blob {
     const sep = dataUrl.indexOf(";base64,");
     if (sep === -1) {
@@ -45,20 +39,43 @@ function dataUrlToBlob(dataUrl: string): Blob {
     return new Blob([bytes], { type: mime });
 }
 
-/**
- * Build if absent; always returns the stable blob: URL for (id, field).
- * The caller's dataUrl string is consumed, not stored; a second call for the
- * same (id, field) returns the first URL no matter what string is passed.
- */
+/** Build if absent and return the stable URL for an output field. */
 export function ensureUrl(id: number, field: BlobField, dataUrl: string): string {
     const key = keyOf(id, field);
     const existing = cache.get(key);
-    if (existing) return existing.url;
+    if (existing) {
+        existing.lastUsed = ++useCounter;
+        return existing.url;
+    }
 
     const blob = dataUrlToBlob(dataUrl);
-    const entry: CacheEntry = { blob, url: URL.createObjectURL(blob) };
+    const entry: CacheEntry = {
+        blob,
+        url: URL.createObjectURL(blob),
+        users: 0,
+        lastUsed: ++useCounter,
+    };
     cache.set(key, entry);
+    cacheBytes += blob.size;
     return entry.url;
+}
+
+/** Build (if needed) and mark an object URL as actively rendered. */
+export function retainUrl(id: number, field: BlobField, dataUrl: string): string {
+    const result = ensureUrl(id, field, dataUrl);
+    const entry = cache.get(keyOf(id, field));
+    if (entry) entry.users++;
+    trim();
+    return result;
+}
+
+/** Release one renderer. The inactive entry remains in the warm LRU. */
+export function releaseUrl(id: number, field: BlobField): void {
+    const entry = cache.get(keyOf(id, field));
+    if (!entry) return;
+    entry.users = Math.max(0, entry.users - 1);
+    entry.lastUsed = ++useCounter;
+    trim();
 }
 
 /** Lookup without building. */
@@ -71,22 +88,38 @@ export function blob(id: number, field: BlobField): Blob | null {
     return cache.get(keyOf(id, field))?.blob ?? null;
 }
 
-/**
- * Revoke all URLs + drop all fields of one output id.
- * THE ONLY PLACE URLs get revoked (called on DB-row deletion).
- */
+/** Force removal of all cached fields for a deleted database row. */
 export function evict(id: number): void {
     for (const field of BLOB_FIELDS) {
         const key = keyOf(id, field);
         const entry = cache.get(key);
-        if (entry) {
-            URL.revokeObjectURL(entry.url);
-            cache.delete(key);
-        }
+        if (!entry) continue;
+        URL.revokeObjectURL(entry.url);
+        cache.delete(key);
+        cacheBytes -= entry.blob.size;
     }
 }
 
-/** Number of cached (id, field) entries. */
+/**
+ * Revoke least-recently-used inactive URLs until the cache fits the budget.
+ * Active entries are never revoked, so mounted media can temporarily exceed it.
+ */
+export function trim(maxBytes = DEFAULT_MAX_BYTES): void {
+    if (cacheBytes <= maxBytes) return;
+
+    const inactive = [...cache.entries()]
+        .filter(([, entry]) => entry.users === 0)
+        .sort((a, b) => a[1].lastUsed - b[1].lastUsed);
+
+    for (const [key, entry] of inactive) {
+        if (cacheBytes <= maxBytes) break;
+        URL.revokeObjectURL(entry.url);
+        cache.delete(key);
+        cacheBytes -= entry.blob.size;
+    }
+}
+
+/** Number of cached output fields. */
 export function size(): number {
     return cache.size;
 }

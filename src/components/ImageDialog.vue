@@ -10,6 +10,7 @@ import { useOutputStore, toViewModel, type OutputViewModel } from '@/stores/outp
 import { db } from '@/utils/db';
 import { useGeneratorStore } from '@/stores/generator';
 import { downloadImage, downloadVideo } from '@/utils/download';
+import { useOutputBlobUrl } from '@/utils/useOutputBlobUrl';
 
 const store = useOutputStore();
 const uiStore = useUIStore();
@@ -33,6 +34,9 @@ const modalOpen = computed({
 });
 
 const currentOutput = ref<OutputViewModel | undefined>(store.currentOutputs[0]);
+const currentOutputId = computed(() => currentOutput.value?.id);
+const shouldRenderOutput = computed(() => modalOpen.value && currentOutput.value !== undefined);
+const currentImageUrl = useOutputBlobUrl(currentOutputId, shouldRenderOutput);
 
 watch(
     () => uiStore.activeModal,
@@ -120,8 +124,8 @@ function downloadAvi() {
                 style="position: relative; display: flex; align-items: center; justify-content: center;"
             >
                 <img
-                    v-if="currentOutput"
-                    :src="currentOutput?.imageUrl"
+                    v-if="currentOutput && currentImageUrl"
+                    :src="currentImageUrl"
                     alt="Output image"
                     style="max-width: 100%; max-height: 100%; object-fit: contain;"
                 />

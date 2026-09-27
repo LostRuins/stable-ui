@@ -10,7 +10,7 @@ import { liveQuery, type IndexableType } from "dexie";
 import { from } from 'rxjs';
 import { useObservable } from "@vueuse/rxjs";
 import { useLiveQuery } from "@/utils/useLiveQuery";
-import { ensureUrl, evict } from "@/utils/blobCache";
+import { evict } from "@/utils/blobCache";
 
 export interface ImageData {
     id: number;
@@ -41,11 +41,8 @@ export interface ImageData {
  * A string-free view of an ImageData row, for reactively exposed state
  * (carousel outputs, gallery page, dialog).
  *
- * Carries every ImageData metadata field EXCEPT image/extra_avi/
- * final_frame, plus:
- * - imageUrl: the stable blob: URL of the row's image (or, on decode
- *   failure, the original data-URL string — degrading that one row to the
- *   old behavior);
+ * Carries every ImageData metadata field except image/extra_avi/final_frame.
+ * Renderers acquire the image's blob URL lazily using the row id.
  * - hasAvi / hasFinalFrame: presence flags replacing the string fields
  *   (button visibility);
  * - type: carried from the generator's CarouselOutput (always "image"
@@ -57,7 +54,6 @@ export interface ImageData {
  */
 export interface OutputViewModel {
     id: number;
-    imageUrl: string;
     prompt?: string;
     sampler_name?: string;
     seed?: number;
@@ -86,19 +82,10 @@ export interface OutputViewModel {
 }
 
 /**
- * Maps a full ImageData row (with its data-URL strings) to a
- * string-free OutputViewModel. Pure function: the row's image string is
- * fed to the blob cache (built once per (id, field)), never stored.
+ * Maps a full ImageData row to a string-free OutputViewModel. Blob creation is
+ * deliberately deferred until a renderer mounts.
  */
 export function toViewModel(row: ImageData, type: "image" | "video" = "image"): OutputViewModel {
-    let imageUrl: string;
-    try {
-        imageUrl = ensureUrl(row.id, "image", row.image);
-    } catch {
-        // Degrade to the old behavior for this one row: render the raw data URL.
-        imageUrl = row.image;
-    }
-
     // Destructure the string fields OUT — the returned object must not hold
     // image/extra_avi/final_frame.
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -106,7 +93,6 @@ export function toViewModel(row: ImageData, type: "image" | "video" = "image"): 
 
     return {
         ...rest,
-        imageUrl,
         hasAvi: extra_avi != null && extra_avi !== "",
         hasFinalFrame: final_frame != null && final_frame !== "",
         type,
@@ -150,10 +136,8 @@ export const useOutputStore = defineStore("outputs", () => {
                 : sortedOutputs
                     .offset((currentPage.value - 1) * store.pageSize)
                     .limit(store.pageSize);
-            // Map the raw rows (with data-URL strings) to string-free view models:
-            // the strings live on the heap only for this tick's structured clone,
-            // the reactive state holds the view models (ensureUrl is a cache hit
-            // after the first tick per id)
+            // Raw data-URL strings live only for this query's structured clone;
+            // renderers acquire blob URLs lazily for mounted outputs.
             return query.toArray().then(rows => rows.map(row => toViewModel(row)));
         },
         [ toRef(useOptionsStore(), "pageless"), toRef(useOptionsStore(), "pageSize"), currentPage, sortBy, filterBy ],

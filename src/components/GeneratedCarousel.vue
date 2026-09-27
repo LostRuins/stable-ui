@@ -2,10 +2,11 @@
 import { useGeneratorStore } from '@/stores/generator';
 import { useOptionsStore } from '@/stores/options';
 import { useUIStore } from '@/stores/ui';
-import { ElCarousel, ElCarouselItem, ElImage, ElDivider, ElScrollbar, ElIcon } from 'element-plus';
+import { ElCarousel, ElCarouselItem, ElDivider, ElScrollbar, ElIcon } from 'element-plus';
 import { Back } from '@element-plus/icons-vue';
 import { computed, ref, watch } from 'vue';
 import ImageActions from './ImageActions.vue';
+import CachedOutputMedia from './CachedOutputMedia.vue';
 
 const store = useGeneratorStore();
 const uiStore = useUIStore();
@@ -16,6 +17,13 @@ const currentOutput = computed(() => store.outputs[index.value]?.output);
 
 function onChange(newIndex: number) {
     index.value = newIndex;
+}
+
+function isCarouselItemActive(itemIndex: number) {
+    const length = store.outputs.length;
+    if (length <= 3) return true;
+    const distance = Math.abs(itemIndex - index.value);
+    return Math.min(distance, length - distance) <= 1;
 }
 
 function onDelete(id: number) {
@@ -51,15 +59,13 @@ watch(
                 indicator-position="outside"
                 @change="onChange"
             >
-                <el-carousel-item v-for="imageData in store.outputs" :key="imageData.output.id" style="display: flex; justify-content: center;">
-                    <video :src="imageData.output.imageUrl" controls v-if="imageData.type === 'video'" style="max-width: 100%; height: 100%;" />
-                    <el-image
-                        :src="imageData.output.imageUrl"
-                        style="width: 100%; height: 100%;"
-                        fit="scale-down"
-                        @click="() => uiStore.activeModal = imageData.output.id"
-                        v-if="imageData.type === 'image'"
-                    ></el-image>
+                <el-carousel-item v-for="(imageData, itemIndex) in store.outputs" :key="imageData.output.id" style="display: flex; justify-content: center;">
+                    <CachedOutputMedia
+                        :output-id="imageData.output.id"
+                        :type="imageData.type"
+                        :active="isCarouselItemActive(itemIndex)"
+                        @open="uiStore.activeModal = imageData.output.id"
+                    />
                 </el-carousel-item>
             </el-carousel>
         </div>
