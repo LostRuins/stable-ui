@@ -69,6 +69,16 @@ export function retainUrl(id: number, field: BlobField, dataUrl: string): string
     return result;
 }
 
+/** Retain a cache hit without loading the original data URL from IndexedDB. */
+export function retainCachedUrl(id: number, field: BlobField): string | null {
+    const entry = cache.get(keyOf(id, field));
+    if (!entry) return null;
+    entry.users++;
+    entry.lastUsed = ++useCounter;
+    trim();
+    return entry.url;
+}
+
 /** Release one renderer. The inactive entry remains in the warm LRU. */
 export function releaseUrl(id: number, field: BlobField): void {
     const entry = cache.get(keyOf(id, field));

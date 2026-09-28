@@ -1,6 +1,19 @@
 import { ref, watch, type Ref } from "vue";
 import { db } from "@/utils/db";
-import { releaseUrl, retainUrl } from "@/utils/blobCache";
+import { releaseUrl, retainUrl, retainCachedUrl } from "@/utils/blobCache";
+
+/** The caller owns one cache reference and must release it when finished. */
+export async function acquireOutputBlobUrl(
+    id: number,
+    isCancelled: () => boolean = () => false,
+): Promise<string | undefined> {
+    if (isCancelled()) return;
+    const cached = retainCachedUrl(id, "image");
+    if (cached) return cached;
+    const row = await db.outputs.get(id);
+    if (!row || isCancelled()) return;
+    return retainUrl(id, "image", row.image);
+}
 
 /** Lazily retain an output's primary image URL while it is rendered. */
 export function useOutputBlobUrl(
@@ -23,10 +36,8 @@ export function useOutputBlobUrl(
             });
 
             try {
-                const row = await db.outputs.get(id);
-                if (!row) return;
-
-                const nextUrl = retainUrl(id, "image", row.image);
+                const nextUrl = await acquireOutputBlobUrl(id, () => cancelled);
+                if (!nextUrl) return;
                 retained = true;
                 if (cancelled) {
                     releaseUrl(id, "image");

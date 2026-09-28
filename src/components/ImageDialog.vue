@@ -4,13 +4,14 @@ import {
 } from 'element-plus';
 import { SwipeDirection, useSwipe } from '@vueuse/core';
 import ImageActions from '../components/ImageActions.vue';
-import { computed, ref, watch } from 'vue';
+import { computed, ref, shallowRef, watch, nextTick, onScopeDispose } from 'vue';
 import { useUIStore } from '@/stores/ui';
 import { useOutputStore, toViewModel, type OutputViewModel } from '@/stores/outputs';
 import { db } from '@/utils/db';
 import { useGeneratorStore } from '@/stores/generator';
 import { downloadImage, downloadVideo } from '@/utils/download';
-import { useOutputBlobUrl } from '@/utils/useOutputBlobUrl';
+import { acquireOutputBlobUrl } from '@/utils/useOutputBlobUrl';
+import { releaseUrl } from '@/utils/blobCache';
 
 const store = useOutputStore();
 const uiStore = useUIStore();
@@ -33,34 +34,82 @@ const modalOpen = computed({
     }
 });
 
-const currentOutput = ref<OutputViewModel | undefined>(store.currentOutputs[0]);
-const currentOutputId = computed(() => currentOutput.value?.id);
-const shouldRenderOutput = computed(() => modalOpen.value && currentOutput.value !== undefined);
-const currentImageUrl = useOutputBlobUrl(currentOutputId, shouldRenderOutput);
+// The displayed image and metadata are committed together after decoding.
+// Its cache reference stays alive while a replacement is being prepared.
+const displayed = shallowRef<{ output: OutputViewModel; url: string }>();
+const currentOutput = computed(() => displayed.value?.output);
+const currentImageUrl = computed(() => displayed.value?.url);
+
+async function clearDisplayed() {
+    const previous = displayed.value;
+    displayed.value = undefined;
+    await nextTick();
+    if (previous) releaseUrl(previous.output.id, 'image');
+}
+
+onScopeDispose(() => {
+    if (displayed.value) releaseUrl(displayed.value.output.id, 'image');
+    displayed.value = undefined;
+});
 
 watch(
     () => uiStore.activeModal,
-    async (activeModal) => {
+    async (activeModal, _previous, onCleanup) => {
         if (activeModal === -1) {
-            currentOutput.value = undefined;
+            await clearDisplayed();
             return;
         }
 
-        const output = store.currentOutputs.find(el => el.id === activeModal);
-        if (output) return currentOutput.value = output;
+        let cancelled = false;
+        let ownsPendingUrl = false;
+        let preview: HTMLImageElement | undefined;
+        const releasePending = () => {
+            if (ownsPendingUrl) releaseUrl(activeModal, 'image');
+            ownsPendingUrl = false;
+        };
+        const isStale = () => cancelled || uiStore.activeModal !== activeModal;
+        onCleanup(() => {
+            cancelled = true;
+            preview?.removeAttribute('src');
+            releasePending();
+        });
 
-        currentOutput.value = undefined;
-        const persistedOutput = await db.outputs.get(activeModal);
-        if (uiStore.activeModal !== activeModal) return;
+        try {
+            let output = store.currentOutputs.find(el => el.id === activeModal);
+            if (!output) {
+                const row = await db.outputs.get(activeModal);
+                if (isStale()) return;
+                if (!row) {
+                    uiStore.activeModal = -1;
+                    return;
+                }
+                output = toViewModel(row);
+            }
 
-        if (!persistedOutput) {
-            currentOutput.value = undefined;
-            uiStore.activeModal = -1;
-            return;
+            const url = await acquireOutputBlobUrl(activeModal, isStale);
+            if (!url) return;
+            ownsPendingUrl = true;
+            if (isStale()) return;
+
+            preview = new Image();
+            preview.src = url;
+            await preview.decode();
+            if (isStale()) return;
+
+            const previous = displayed.value;
+            displayed.value = { output, url };
+            ownsPendingUrl = false; // Ownership transfers to displayed.
+            await nextTick();
+            if (previous) releaseUrl(previous.output.id, 'image');
+        } catch {
+            if (!isStale()) uiStore.raiseError('Unable to load this image.', false);
+        } finally {
+            preview?.removeAttribute('src');
+            preview = undefined;
+            releasePending();
         }
-
-        currentOutput.value = toViewModel(persistedOutput);
-    }
+    },
+    { immediate: true },
 )
 
 function handleClose() {
@@ -114,7 +163,7 @@ function downloadAvi() {
         :model-value="modalOpen"
         :width="currentOutput?.width"
         class="image-viewer"
-        @closed="handleClose"
+        @update:model-value="modalOpen = $event"
         align-center
     >
         <div class="main-output-container" ref="target">

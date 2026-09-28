@@ -32,6 +32,22 @@ onLongPress(
 const shouldRender = ref(false);
 const outputId = computed(() => props.imageData.id);
 const imageUrl = useOutputBlobUrl(outputId, shouldRender);
+// Keep the tile's space even when its media is unloaded. Remember actual
+// dimensions for older/imported rows whose metadata is missing or inaccurate.
+const measuredAspect = ref<{ id: number; ratio: number }>();
+const aspectRatio = computed(() => {
+    if (measuredAspect.value?.id === props.imageData.id) return measuredAspect.value.ratio;
+    const { width, height } = props.imageData;
+    return width && height && width > 0 && height > 0 ? width / height : 1;
+});
+
+function rememberDimensions(event: Event) {
+    const image = event.target as HTMLImageElement;
+    if (image.naturalWidth && image.naturalHeight) {
+        measuredAspect.value = { id: props.imageData.id, ratio: image.naturalWidth / image.naturalHeight };
+    }
+}
+
 useIntersectionObserver(
     containerRef,
     ([{ isIntersecting }]) => {
@@ -45,13 +61,13 @@ const isSelected = computed(() => uiStore.selected.includes(props.imageData.id))
 </script>
 
 <template>
-    <div class="relative" ref="containerRef">
+    <div class="relative" ref="containerRef" :style="{ aspectRatio }">
         <el-image
             class="thumbnail"
             :src="imageUrl"
             @click="uiStore.activeModal = imageData.id"
             fit="cover"
-            loading="lazy"
+            @load="rememberDimensions"
             :style="`${isSelected && 'opacity: 0.5'}`"
             v-if="shouldRender && imageUrl"
         />
@@ -69,6 +85,8 @@ const isSelected = computed(() => uiStore.selected.includes(props.imageData.id))
 
 <style scoped>
     .thumbnail {
+        position: absolute;
+        inset: 0;
         display: block;
         width: 100%;
         height: 100%;
