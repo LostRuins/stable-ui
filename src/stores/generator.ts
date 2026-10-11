@@ -281,7 +281,7 @@ export const useGeneratorStore = defineStore("generator", () => {
     const minDimensions = ref(64);
     const maxDimensions = computed(() => useOptionsStore().allowLargerParams === "Enabled" ? 3072 : 1024);
     const minImages = ref(1);
-    const maxImages = ref(20);
+    const maxImages = ref(MAX_PARALLEL_REQUESTS);
     const minSteps = ref(1);
     const maxSteps = computed(() => useOptionsStore().allowLargerParams === "Enabled" ? 150 : 50);
     const minCfgScale = ref(1);
