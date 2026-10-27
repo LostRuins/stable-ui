@@ -62,16 +62,16 @@ const downloadImageButton = async (imageData: ImageData | OutputViewModel) => {
     if (!row) return;
     if (row.extra_avi)
     {
-        //its a video with avi
-        // extra_avi format: data:video/avi;base64,AAAA...
+        // Preserve the existing behavior: when an AVI sidecar was requested,
+        // the generic Download button prefers it. The dialog also exposes the
+        // primary WebP (or legacy GIF) as a separate download.
         const base64 = row.extra_avi.split(',')[1];
         if (!base64) return;
         const filename = `${row.seed}-${row.prompt}.avi`;
         downloadVideo(base64,filename);
         return;
-    } else {
-        downloadImage(row.image, `${row.seed}-${row.prompt}`);
     }
+    downloadImage(row.image, `${row.seed}-${row.prompt}`, Boolean(row.frames && row.frames > 1));
 }
 
 const dismissImage = () => {

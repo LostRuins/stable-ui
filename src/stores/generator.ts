@@ -580,9 +580,15 @@ export const useGeneratorStore = defineStore("generator", () => {
                 if(videoStartFrame.value) newgen.params["video_start_frame"] = videoStartFrame.value.base64;
                 if(videoEndFrame.value) newgen.params["video_end_frame"] = videoEndFrame.value.base64;
             }
-            if(useOptionsStore().alsoRequestAvi === "Enabled" && newgen.params["frames"] && newgen.params["frames"]>1)
+            if(newgen.params["frames"] && newgen.params["frames"]>1)
             {
-                newgen.params["video_output_type"] = 2; //request avi to download as well
+                const optionsStore = useOptionsStore();
+                const requestAvi = optionsStore.alsoRequestAvi === "Enabled";
+                const preferLegacyGif = optionsStore.preferLegacyGif === "Enabled";
+                // 0 = GIF, 2 = GIF + AVI, 3 = WebP, 4 = WebP + AVI.
+                newgen.params["video_output_type"] = preferLegacyGif
+                    ? (requestAvi ? 2 : 0)
+                    : (requestAvi ? 4 : 3);
             }
             const kcppExtraArgs: any = {};
             if(multiSelect.value.flowShift.state === "Enabled" && flow_shift > 0)
@@ -693,7 +699,12 @@ export const useGeneratorStore = defineStore("generator", () => {
             finalImages.map(async (image) => {
                 const img = image.images[0];
                 const animated = image.animated?true:false;
-                const mime = (animated?'gif':'png');
+                const videoOutputType = Number(image.params?.video_output_type);
+                // Types 3/4 are animated WebP. Keep the legacy GIF fallback for
+                // recovered or older requests that used types 0/2 (or no type).
+                const mime = animated && (videoOutputType === 3 || videoOutputType === 4)
+                    ? 'webp'
+                    : (animated ? 'gif' : 'png');
                 const extra_avi = (image.extra_data?(`data:video/avi;base64,${image.extra_data}`):"");
                 const final_frame = (image.final_frame?`data:image/jpeg;base64,${image.final_frame}`:"");
                 const params: any = {

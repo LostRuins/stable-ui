@@ -15,6 +15,7 @@ export const useOptionsStore = defineStore("options", () => {
     const pageless = useLocalStorage<IToggle>("pageless", "Disabled");
     const allowLargerParams = useLocalStorage<IToggle>("allowLargerParams", "Disabled");
     const alsoRequestAvi = useLocalStorage<IToggle>("alsoRequestAvi", "Enabled");
+    const preferLegacyGif = useLocalStorage<IToggle>("preferLegacyGif", "Disabled");
     const keepImageGenOnDisconnect = useLocalStorage<IToggle>("keepImageGenOnDisconnect", "Disabled");
     const fetchGenerationProgress = useLocalStorage<IPreviewImageOnProgress>("fetchGenerationProgress", "Text");
     const autoCarousel = useLocalStorage<IToggle>("autoCarousel", "Enabled");
@@ -36,6 +37,7 @@ export const useOptionsStore = defineStore("options", () => {
         pageless,
         allowLargerParams,
         alsoRequestAvi,
+        preferLegacyGif,
         keepImageGenOnDisconnect,
         fetchGenerationProgress,
         autoCarousel,

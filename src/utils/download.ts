@@ -25,10 +25,8 @@ export async function downloadMultipleImages(outputKeys: IndexableType[], showMe
         const fileName = `${i}-${output.seed}-${output.prompt}`.replace(/[/\\:*?"<>]/g, "").substring(0, 128).trimEnd();
 
         let savtype = optionsStore.imageDownloadType;
-        if(image.startsWith("data:image/gif"))
-        {
-            savtype = "GIF"; // always save gifs as gif
-        }
+        if(image.startsWith("data:image/gif")) savtype = "GIF";
+        if(output.frames && output.frames > 1 && image.startsWith("data:image/webp")) savtype = "WEBP";
 
         if (savtype === "PNG") {
             toDownload.push({
@@ -68,17 +66,17 @@ export async function downloadMultipleImages(outputKeys: IndexableType[], showMe
     downloadLink.click();
 }
 
-export async function downloadImage(base64Data: string, fileName: string) {
+export async function downloadImage(base64Data: string, fileName: string, preserveAnimation = false) {
     const optionsStore = useOptionsStore();
 
     const downloadLink = document.createElement("a");
 
     let blob: Blob | undefined;
     let savtype = optionsStore.imageDownloadType;
-    if(base64Data.startsWith("data:image/gif"))
-    {
-        savtype = "GIF"; // always save gifs as gif
-    }
+    // Preserve native animation data. Converting either format through a
+    // canvas would keep only the first frame.
+    if(base64Data.startsWith("data:image/gif")) savtype = "GIF";
+    if(preserveAnimation && base64Data.startsWith("data:image/webp")) savtype = "WEBP";
 
     if (savtype === "PNG") {
         blob = await convertBase64ToBlob(base64Data, "image/png");

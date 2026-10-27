@@ -39,6 +39,9 @@ const modalOpen = computed({
 const displayed = shallowRef<{ output: OutputViewModel; url: string }>();
 const currentOutput = computed(() => displayed.value?.output);
 const currentImageUrl = computed(() => displayed.value?.url);
+const animationDownloadLabel = computed(() =>
+    currentOutput.value?.imageFormat === "gif" ? "[Download GIF]" : "[Download WEBP]"
+);
 
 async function clearDisplayed() {
     const previous = displayed.value;
@@ -134,12 +137,12 @@ function extendVideo() {
     });
 }
 
-function downloadGif() {
+function downloadAnimation() {
     // the view model has no image string: re-read the row at click time
     const id = currentOutput.value?.id;
     if (id === undefined) return;
     db.outputs.get(id).then(row => {
-        if (row) downloadImage(row.image, `${row.seed}-${row.prompt}`);
+        if (row) downloadImage(row.image, `${row.seed}-${row.prompt}`, true);
     });
 }
 
@@ -197,7 +200,7 @@ function downloadAvi() {
             <span v-if="currentOutput?.lora_meta"> - LoRA: {{currentOutput.lora_meta}}</span>
             <br/>
             <b>
-            <span v-if="currentOutput?.frames && currentOutput.frames > 1"> <a href="#" @click.prevent="downloadGif" style="cursor: pointer; color: var(--el-color-primary);">[Download GIF]</a></span>
+            <span v-if="currentOutput?.frames && currentOutput.frames > 1"> <a href="#" @click.prevent="downloadAnimation" style="cursor: pointer; color: var(--el-color-primary);">{{ animationDownloadLabel }}</a></span>
             <span v-if="currentOutput?.hasAvi"> - <a href="#" @click.prevent="downloadAvi" style="cursor: pointer; color: var(--el-color-primary);">[Download AVI]</a></span>
             <span v-if="currentOutput?.hasFinalFrame"> - <a href="#" @click.prevent="extendVideo" style="cursor: pointer; color: var(--el-color-primary);">[Extend Video]</a></span>
             </b>

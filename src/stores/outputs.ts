@@ -37,6 +37,8 @@ export interface ImageData {
     lora_meta?: string;
 }
 
+export type OutputImageFormat = "gif" | "webp" | "png" | "jpeg" | "unknown";
+
 /**
  * A string-free view of an ImageData row, for reactively exposed state
  * (carousel outputs, gallery page, dialog).
@@ -78,7 +80,15 @@ export interface OutputViewModel {
     rated?: number;
     hasAvi: boolean;
     hasFinalFrame: boolean;
+    imageFormat: OutputImageFormat;
     type: "image" | "video";
+}
+
+function getImageFormat(dataUrl: string): OutputImageFormat {
+    const match = /^data:image\/(gif|webp|png|jpe?g)(?:;|,)/i.exec(dataUrl);
+    if (!match) return "unknown";
+    const format = match[1].toLowerCase();
+    return format === "jpg" ? "jpeg" : format as OutputImageFormat;
 }
 
 /**
@@ -95,6 +105,7 @@ export function toViewModel(row: ImageData, type: "image" | "video" = "image"): 
         ...rest,
         hasAvi: extra_avi != null && extra_avi !== "",
         hasFinalFrame: final_frame != null && final_frame !== "",
+        imageFormat: getImageFormat(image),
         type,
     };
 }
@@ -209,13 +220,14 @@ export const useOutputStore = defineStore("outputs", () => {
         const pushing = [];
         for (const [name, file] of Object.entries(files)) {
             const splitName = name.split(".");
-            const fileType = splitName.slice(-1).join(".");
+            const fileType = splitName.slice(-1).join(".").toLowerCase();
             const fileName = splitName.slice(0, -1).join(".");
             if (fileType === "webp" || fileType === "png" || fileType === "gif" || fileType === "jpg" || fileType === "jpeg") {
+                const mimeType = fileType === "jpg" ? "jpeg" : fileType;
                 // Async to speed up
                 pushing.push(
                     new Promise(resolve => {
-                        file.async("base64").then(async (webp) => {
+                        file.async("base64").then(async (base64) => {
                             if (!files[fileName+".json"]) {
                                 outputsFailed++;
                                 return resolve(null);
@@ -224,7 +236,7 @@ export const useOutputStore = defineStore("outputs", () => {
                             outputsAppended++;
                             resolve({
                                 id: -1,
-                                image: `data:image/webp;base64,${webp}`,
+                                image: `data:image/${mimeType};base64,${base64}`,
                                 ...json,
                                 rated: json.rated ? 1 : 0,
                                 starred: json.starred ? 1 : 0,
