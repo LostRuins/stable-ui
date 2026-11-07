@@ -14,7 +14,7 @@ import { parsePromptSegments, expandPromptSegments } from "@/utils/expansions";
 import { convertToBase64 } from "@/utils/base64";
 import { buildApiUrl } from "@/utils/api";
 import { parseExtraRequestFields } from "@/utils/extraRequestFields";
-import { splitStoredPrompt, getPromptParts } from "@/utils/media";
+import { splitStoredPrompt, getPromptParts, base64ToBlob } from "@/utils/media";
 function getDefaultStore() {
     return {
         steps: 20,
@@ -706,8 +706,10 @@ export const useGeneratorStore = defineStore("generator", () => {
                 const mime = animated && (videoOutputType === 3 || videoOutputType === 4)
                     ? 'webp'
                     : (animated ? 'gif' : 'png');
-                const extra_avi = (image.extra_data?(`data:video/avi;base64,${image.extra_data}`):"");
-                const final_frame = (image.final_frame?`data:image/jpeg;base64,${image.final_frame}`:"");
+                // The server returns raw base64; store native Blobs of the
+                // right type (the mime doubles as the old data-URL prefix)
+                const extra_avi = (image.extra_data?base64ToBlob(image.extra_data, "video/avi"):"");
+                const final_frame = (image.final_frame?base64ToBlob(image.final_frame, "image/jpeg"):"");
                 // image.prompt is the concatenated "{positive} ### {negative}"
                 // form in both cases: on the normal path it is this client's
                 // own queue entry (the server receives the fields separately
@@ -720,7 +722,7 @@ export const useGeneratorStore = defineStore("generator", () => {
                 const params: any = {
                     // The database automatically increments IDs for us
                     id: -1,
-                    image: `data:image/${mime};base64,${img}`,
+                    image: base64ToBlob(img, `image/${mime}`),
                     prompt,
                     negative_prompt,
                     modelName: image.models[0],

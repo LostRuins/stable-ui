@@ -1,11 +1,14 @@
 /**
  * Session-scoped, byte-bounded cache of Blobs and object URLs.
  *
- * IndexedDB continues to store data URLs. Mounted media retain cache entries;
- * released entries remain available for reuse until the LRU exceeds its byte
- * budget. This keeps URLs stable for right-click/open-in-new-tab without
- * retaining every image visited during the session.
+ * IndexedDB stores media as data-URL strings (legacy rows) or native
+ * Blobs (new rows); both arrive through `MediaField`. Mounted media retain
+ * cache entries; released entries remain available for reuse until the LRU
+ * exceeds its byte budget. This keeps URLs stable for right-click/open-in-
+ * new-tab without retaining every image visited during the session.
  */
+
+import { dataUrlToBlob, type MediaField } from "./media";
 
 export type BlobField = "image" | "extra_avi" | "final_frame";
 
@@ -25,22 +28,8 @@ let useCounter = 0;
 
 const keyOf = (id: number, field: BlobField) => `${id}:${field}`;
 
-function dataUrlToBlob(dataUrl: string): Blob {
-    const sep = dataUrl.indexOf(";base64,");
-    if (sep === -1) {
-        throw new Error(`Not a base64 data URL: ${dataUrl.slice(0, 32)}...`);
-    }
-    const mime = dataUrl.slice("data:".length, sep);
-    const binary = atob(dataUrl.slice(sep + ";base64,".length));
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) {
-        bytes[i] = binary.charCodeAt(i);
-    }
-    return new Blob([bytes], { type: mime });
-}
-
 /** Build if absent and return the stable URL for an output field. */
-export function ensureUrl(id: number, field: BlobField, dataUrl: string): string {
+export function ensureUrl(id: number, field: BlobField, value: MediaField): string {
     const key = keyOf(id, field);
     const existing = cache.get(key);
     if (existing) {
@@ -48,7 +37,9 @@ export function ensureUrl(id: number, field: BlobField, dataUrl: string): string
         return existing.url;
     }
 
-    const blob = dataUrlToBlob(dataUrl);
+    // Legacy rows carry a data-URL string (decode it); new rows carry the
+    // native Blob (use it as-is, skipping the decode)
+    const blob = typeof value === "string" ? dataUrlToBlob(value) : value;
     const entry: CacheEntry = {
         blob,
         url: URL.createObjectURL(blob),
@@ -61,8 +52,8 @@ export function ensureUrl(id: number, field: BlobField, dataUrl: string): string
 }
 
 /** Build (if needed) and mark an object URL as actively rendered. */
-export function retainUrl(id: number, field: BlobField, dataUrl: string): string {
-    const result = ensureUrl(id, field, dataUrl);
+export function retainUrl(id: number, field: BlobField, value: MediaField): string {
+    const result = ensureUrl(id, field, value);
     const entry = cache.get(keyOf(id, field));
     if (entry) entry.users++;
     trim();
