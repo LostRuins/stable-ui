@@ -17,6 +17,7 @@ import {
 import { deflateRaw } from 'pako';
 import { downloadImage, downloadVideo } from '@/utils/download'
 import { useUIStore } from "@/stores/ui";
+import { getPromptParts, joinPrompts } from '@/utils/media';
 
 const store = useGeneratorStore();
 const outputStore = useOutputStore();
@@ -84,8 +85,10 @@ async function copyLink(imageData: ImageData | OutputViewModel) {
     const row = await rowOf(imageData);
     if (!row) return;
     const urlBase = window.location.origin;
+    // the share-link payload carries the ' ### '-concatenated form
+    const linkPromptParts = getPromptParts(row);
     const linkParams = {
-        prompt: row.prompt,
+        prompt: joinPrompts(linkPromptParts.prompt, linkPromptParts.negative_prompt),
         width: row.width ? row.width : undefined,
         height: row.height ? row.height : undefined,
         steps: row.steps,

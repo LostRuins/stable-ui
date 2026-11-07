@@ -11,11 +11,19 @@ import { from } from 'rxjs';
 import { useObservable } from "@vueuse/rxjs";
 import { useLiveQuery } from "@/utils/useLiveQuery";
 import { evict } from "@/utils/blobCache";
+import { splitStoredPrompt } from "@/utils/media";
 
 export interface ImageData {
     id: number;
     image: string;
     prompt?: string;
+    /**
+     * The negative prompt, stored separately from `prompt`. Present on rows
+     * written after the split; legacy rows carry the concatenated
+     * `"{positive} ### {negative}"` form in `prompt` alone and are read
+     * through `getPromptParts` (no migration).
+     */
+    negative_prompt?: string;
     sampler_name?: string;
     seed?: number;
     steps?: number;
@@ -57,6 +65,8 @@ export type OutputImageFormat = "gif" | "webp" | "png" | "jpeg" | "unknown";
 export interface OutputViewModel {
     id: number;
     prompt?: string;
+    /** Present on rows written after the split — comes through the `...rest` spread. */
+    negative_prompt?: string;
     sampler_name?: string;
     seed?: number;
     steps?: number;
@@ -185,6 +195,17 @@ export const useOutputStore = defineStore("outputs", () => {
         const newOutputsWithoutID = newOutputs.map(el => {
             // eslint-disable-next-line @typescript-eslint/no-unused-vars
             const { id, ...rest } = el;
+            // Rows without a negative_prompt field (ZIP imports of old
+            // sidecars, legacy localStorage rows) still carry the
+            // concatenated "{positive} ### {negative}" prompt — split it so
+            // every stored row has the two fields. The ` ### ` join is a
+            // storage detail; this is the single normalization point for
+            // rows entering the database.
+            if (rest.negative_prompt === undefined) {
+                const split = splitStoredPrompt(rest.prompt);
+                rest.prompt = split.prompt;
+                rest.negative_prompt = split.negative_prompt;
+            }
             return rest;
         })
         const chunkSize = 50;

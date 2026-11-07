@@ -12,6 +12,7 @@ import { useGeneratorStore } from '@/stores/generator';
 import { downloadImage, downloadVideo } from '@/utils/download';
 import { acquireOutputBlobUrl } from '@/utils/useOutputBlobUrl';
 import { releaseUrl } from '@/utils/blobCache';
+import { getPromptParts } from '@/utils/media';
 
 const store = useOutputStore();
 const uiStore = useUIStore();
@@ -42,6 +43,8 @@ const currentImageUrl = computed(() => displayed.value?.url);
 const animationDownloadLabel = computed(() =>
     currentOutput.value?.imageFormat === "gif" ? "[Download GIF]" : "[Download WEBP]"
 );
+
+const promptParts = computed(() => getPromptParts(currentOutput.value ?? {}));
 
 async function clearDisplayed() {
     const previous = displayed.value;
@@ -183,9 +186,9 @@ function downloadAvi() {
                 />
             </div>
         </div>
-        <div style="font-size: 16px; font-weight: 500;">{{currentOutput?.prompt?.split("###")[0] || 'Unknown Creation'}}</div>
+        <div style="font-size: 16px; font-weight: 500;">{{promptParts.prompt || 'Unknown Creation'}}</div>
         <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; letter-spacing: 0.025em;">
-            <div>Negative Prompt: {{currentOutput?.prompt?.split("###")[1] || "None"}}</div>
+            <div>Negative Prompt: {{promptParts.negative_prompt || "None"}}</div>
             <span>Model: {{currentOutput?.modelName || "Unknown"}} - </span>
             <span>Sampler: {{currentOutput?.sampler_name || "Unknown"}} - </span>
             <span>Scheduler: {{currentOutput?.scheduler || "Unknown"}} - </span>
