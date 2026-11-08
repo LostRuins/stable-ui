@@ -776,7 +776,10 @@ export const useGeneratorStore = defineStore("generator", () => {
         timer.value.interval = setInterval(() => {
             timer.value.seconds++;
         }, 1000);
-        // Loop until queue is done or generation is cancelled
+        // Loop until queue is done or generation is cancelled. processImages is
+        // awaited, so the loop can only exit once every picked item has fully
+        // processed — the post-loop finalization blocks can never then run while
+        // a processImages is still in flight.
         let recoveryPending = false;
         while (!queue.value.every(el => el.gathered || el.failed) && !cancelled.value) {
             const next = queue.value.find(
@@ -797,14 +800,20 @@ export const useGeneratorStore = defineStore("generator", () => {
                     }
                     continue;
                 }
-                processImages([{ ...res, ...next }]);
+                await processImages([{ ...res, ...next }]);
             } catch (error) {
                 next.failed = true;
                 console.error('Error fetching image:', error);
             }
         }
         if (recoveryPending) {
+            // A batch that ends in a pending recovery never satisfies
+            // processImages' finalization check (the queue is cleared below),
+            // so show the carousel here if any item produced an image. The
+            // genkey is deliberately kept: the pending recovery belongs to the
+            // failed item's request.
             generating.value = false;
+            uiStore.showGeneratedImages = outputs.value.length > 0;
             clearInterval(timer.value.interval);
             timer.value.interval = 0;
             timer.value.seconds = 0;
@@ -812,8 +821,16 @@ export const useGeneratorStore = defineStore("generator", () => {
             queue.value = [];
             return;
         }
+        // A batch with no failures finalizes inside processImages (its
+        // outputs.length === queue.length check). Failed items produce no
+        // outputs, so that check can never hold for a batch with failures —
+        // finalize it here. If nothing was produced, keep the last genkey:
+        // the last request may have completed server-side (e.g. a dropped
+        // response), so the recovery button must stay available.
         if (queue.value.some(el => el.failed) && queue.value.every(el => el.gathered || el.failed)) {
             generating.value = false;
+            uiStore.showGeneratedImages = outputs.value.length > 0;
+            if (outputs.value.length > 0) clearLastImageGenkey();
             clearInterval(timer.value.interval);
             timer.value.interval = 0;
             timer.value.seconds = 0;
