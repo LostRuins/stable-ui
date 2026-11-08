@@ -7,7 +7,7 @@ import router from "@/router";
 import { fabric } from "fabric";
 import { useCanvasStore } from "./canvas";
 import { useLocalStorage, useSessionStorage } from "@vueuse/core";
-import { DEBUG_MODE, MAX_PARALLEL_REQUESTS } from "@/constants";
+import { DEBUG_MODE, MAX_QUEUED_REQUESTS } from "@/constants";
 import { validateResponse } from "@/utils/validate";
 import { extractLorasFromPrompt } from "@/utils/loras";
 import { parsePromptSegments, expandPromptSegments } from "@/utils/expansions";
@@ -402,7 +402,7 @@ export const useGeneratorStore = defineStore("generator", () => {
     const minDimensions = ref(64);
     const maxDimensions = computed(() => useOptionsStore().allowLargerParams === "Enabled" ? 3072 : 1024);
     const minImages = ref(1);
-    const maxImages = ref(MAX_PARALLEL_REQUESTS);
+    const maxImages = ref(MAX_QUEUED_REQUESTS);
     const minSteps = ref(1);
     const maxSteps = computed(() => useOptionsStore().allowLargerParams === "Enabled" ? 150 : 50);
     const minCfgScale = ref(1);
@@ -742,11 +742,14 @@ export const useGeneratorStore = defineStore("generator", () => {
         generating.value = true;
         uiStore.showGeneratedImages = false;
 
-        // Push each item in the parameters array to the queue
+        // Push each item in the parameters array to the queue. The queue holds
+        // at most MAX_QUEUED_REQUESTS not-yet-started items (the worker loop
+        // processes them one at a time); anything beyond the limit is reported
+        // instead of being silently dropped.
         const pendingQueue = queue.value.filter(el => !el.gathered && !el.failed); //number of incomplete reqs
         let reqLimCounter = pendingQueue.length;
         for (let i = 0; i < paramsCached.length; i++) {
-            if(reqLimCounter < MAX_PARALLEL_REQUESTS)
+            if(reqLimCounter < MAX_QUEUED_REQUESTS)
             {
                 queue.value.push({
                     ...paramsCached[i],
@@ -757,6 +760,10 @@ export const useGeneratorStore = defineStore("generator", () => {
                 });
                 ++reqLimCounter;
             }
+        }
+        const queuedCount = reqLimCounter - pendingQueue.length;
+        if (queuedCount < paramsCached.length) {
+            uiStore.raiseError(`Only ${queuedCount} of ${paramsCached.length} requests queued: the queue is limited to ${MAX_QUEUED_REQUESTS} pending requests.`, false);
         }
 
         if(!is_new_generation)
@@ -1089,8 +1096,6 @@ export const useGeneratorStore = defineStore("generator", () => {
     function onInvalidResponse(msg: string) {
         const uiStore = useUIStore();
         uiStore.raiseError(msg, false);
-        cancelled.value = false;
-        outputs.value = [];
         return false;
     }
 
