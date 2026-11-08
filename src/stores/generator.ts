@@ -6,7 +6,7 @@ import { useOptionsStore } from "./options";
 import router from "@/router";
 import { fabric } from "fabric";
 import { useCanvasStore } from "./canvas";
-import { useLocalStorage } from "@vueuse/core";
+import { useLocalStorage, useSessionStorage } from "@vueuse/core";
 import { DEBUG_MODE, MAX_PARALLEL_REQUESTS } from "@/constants";
 import { validateResponse } from "@/utils/validate";
 import { extractLorasFromPrompt } from "@/utils/loras";
@@ -40,7 +40,9 @@ export function getNewSeed() {
 }
 
 function getNewGenkey() {
-    return Math.floor(Math.random() * 900000 + 100000).toString();
+    const values = new Uint32Array(4);
+    crypto.getRandomValues(values);
+    return Array.from(values, value => value.toString(16).padStart(8, "0")).join("");
 }
 
 export interface IModelData {
@@ -223,16 +225,12 @@ export const useGeneratorStore = defineStore("generator", () => {
     const outputs    = ref<CarouselOutput[]>([]);
     const abortController = ref<AbortController | null>(null);
     const queue = ref<ICurrentGeneration[]>([]);
-    const lastImageGenkey = useLocalStorage("lastImageGenkey", "");
-    const lastImageRecoveryAttemptedGenkey = useLocalStorage("lastImageRecoveryAttemptedGenkey", "");
+    // Recovery belongs to the tab which submitted the request. localStorage is
+    // shared across tabs and allowed another tab's generation to overwrite this
+    // key, causing recovery to attach to the wrong active image generation.
+    const lastImageGenkey = useSessionStorage("lastImageGenkey", "");
+    const activeImageGenkey = ref("");
     const recoveringLastImage = ref(false);
-
-    // A recovery attempt remains retryable for the lifetime of this page. If the
-    // page is loaded again afterward, treat that reload as abandoning the attempt.
-    if (lastImageRecoveryAttemptedGenkey.value === lastImageGenkey.value) {
-        lastImageGenkey.value = "";
-    }
-    lastImageRecoveryAttemptedGenkey.value = "";
 
     const lastImageRecoveryUrl = computed(() => {
         if (!lastImageGenkey.value) return "";
@@ -242,38 +240,161 @@ export const useGeneratorStore = defineStore("generator", () => {
 
     function clearLastImageGenkey() {
         lastImageGenkey.value = "";
-        lastImageRecoveryAttemptedGenkey.value = "";
+    }
+
+    async function cancelImageGeneration() {
+        const genkey = lastImageGenkey.value;
+        const currentController = abortController.value;
+        const interruptRequest = genkey
+            ? fetch(buildApiUrl(useOptionsStore().baseURL, "/sdapi/v1/interrupt"), {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ genkey }),
+                keepalive: true,
+            })
+            : null;
+
+        // Closing the original response is still useful in normal mode. In
+        // Poor Connection Mode the keyed interrupt above performs the actual
+        // native cancellation instead of treating the disconnect as an abort.
+        currentController?.abort();
+        cancelled.value = true;
+        generating.value = false;
+        clearQueue();
+        clearLastImageGenkey();
+        stopProgressPolling();
+        clearInterval(timer.value.interval);
+        timer.value.interval = 0;
+        timer.value.seconds = 0;
+        if (abortController.value === currentController) abortController.value = null;
+
+        if (interruptRequest) {
+            try {
+                const response = await interruptRequest;
+                if (!response.ok) console.warn(`Failed to explicitly abort image generation: server returned ${response.status}`);
+            } catch (error) {
+                console.warn("Failed to explicitly abort image generation:", error);
+            }
+        }
+    }
+
+    async function fetchRecoveredImage(genkey: string, signal: AbortSignal): Promise<any | null> {
+        const response = await fetch(
+            buildApiUrl(useOptionsStore().baseURL, `/sdapi/v1/get_last.json?genkey=${encodeURIComponent(genkey)}`),
+            { cache: "no-store", signal },
+        );
+        if (response.ok) return response.json();
+        if (response.status === 404) return null;
+        throw new Error(`server returned ${response.status}`);
+    }
+
+    async function fetchImageRecoveryStatus(genkey: string, signal: AbortSignal): Promise<"running" | "complete" | "unknown"> {
+        const statusResponse = await fetch(
+            buildApiUrl(useOptionsStore().baseURL, `/sdapi/v1/recovery-status?genkey=${encodeURIComponent(genkey)}`),
+            { cache: "no-store", signal },
+        );
+        if (statusResponse.ok) {
+            const data = await statusResponse.json();
+            if (data.status === "running" || data.status === "complete") return data.status;
+            return "unknown";
+        }
+        if (statusResponse.status !== 404) {
+            throw new Error(`server returned ${statusResponse.status}`);
+        }
+
+        // Compatibility with KoboldCpp versions from before recovery-status.
+        const progressResponse = await fetch(
+            buildApiUrl(useOptionsStore().baseURL, `/sdapi/v1/progress?skip_current_image=true&genkey=${encodeURIComponent(genkey)}`),
+            { cache: "no-store", signal },
+        );
+        if (!progressResponse.ok) return "unknown";
+        const progress = await progressResponse.json();
+        return Number(progress.state?.job_count ?? 0) > 0 ? "running" : "unknown";
+    }
+
+    function waitForRecoveryPoll(signal: AbortSignal, milliseconds: number): Promise<void> {
+        return new Promise((resolve, reject) => {
+            const timeout = window.setTimeout(() => {
+                signal.removeEventListener("abort", onAbort);
+                resolve();
+            }, milliseconds);
+            const onAbort = () => {
+                window.clearTimeout(timeout);
+                reject(new DOMException("Recovery cancelled", "AbortError"));
+            };
+            signal.addEventListener("abort", onAbort, { once: true });
+        });
     }
 
     async function recoverLastGeneratedImage() {
-        if (!lastImageRecoveryUrl.value || recoveringLastImage.value) return;
+        if (!lastImageGenkey.value || recoveringLastImage.value) return;
 
-        lastImageRecoveryAttemptedGenkey.value = lastImageGenkey.value;
+        const recoveryGenkey = lastImageGenkey.value;
+        const recoveryController = new AbortController();
+        abortController.value = recoveryController;
         recoveringLastImage.value = true;
+        let attachedToRunningGeneration = false;
+        let recoveryCompleted = false;
+        let unknownChecks = 0;
         try {
-            const response = await fetch(lastImageRecoveryUrl.value);
-            if (!response.ok) {
-                throw new Error(`server returned ${response.status}`);
-            }
+            while (lastImageGenkey.value === recoveryGenkey) {
+                const recovered = await fetchRecoveredImage(recoveryGenkey, recoveryController.signal);
+                if (recovered) {
+                    if (!Array.isArray(recovered.images) || !recovered.images[0]) {
+                        throw new Error("server returned an invalid recovery payload");
+                    }
 
-            const recovered = await response.json();
-            if (!Array.isArray(recovered.images) || !recovered.images[0]) {
-                throw new Error("server returned an invalid recovery payload");
-            }
+                    const recoveredParams = recovered.parameters ?? recovered.params ?? {};
+                    outputs.value = [];
+                    useUIStore().showGeneratedImages = false;
+                    await processImages([{
+                        ...recovered,
+                        prompt: recovered.prompt ?? recoveredParams.prompt ?? "",
+                        params: recoveredParams,
+                        models: recovered.models ?? [recovered.modelName ?? "(Unknown model)"],
+                    }], true);
+                    recoveryCompleted = true;
+                    return;
+                }
 
-            const recoveredParams = recovered.parameters ?? recovered.params ?? {};
-            outputs.value = [];
-            useUIStore().showGeneratedImages = false;
-            await processImages([{
-                ...recovered,
-                prompt: recovered.prompt ?? recoveredParams.prompt ?? "",
-                params: recoveredParams,
-                models: recovered.models ?? [recovered.modelName ?? "(Unknown model)"],
-            }], true);
+                const status = await fetchImageRecoveryStatus(recoveryGenkey, recoveryController.signal);
+                if (status === "running") {
+                    unknownChecks = 0;
+                    if (!attachedToRunningGeneration) {
+                        attachedToRunningGeneration = true;
+                        activeImageGenkey.value = recoveryGenkey;
+                        generating.value = true;
+                        cancelled.value = false;
+                        useUIStore().showGeneratedImages = false;
+                        timer.value.seconds = 0;
+                        if (timer.value.interval) clearInterval(timer.value.interval);
+                        timer.value.interval = setInterval(() => timer.value.seconds++, 1000);
+                        startProgressPolling();
+                    }
+                } else if (status === "unknown") {
+                    unknownChecks++;
+                    if (unknownChecks >= 3) {
+                        clearLastImageGenkey();
+                        throw new Error("generation is no longer active and no recovered image was found");
+                    }
+                }
+
+                await waitForRecoveryPoll(recoveryController.signal, 1500);
+            }
         } catch (error) {
-            const detail = error instanceof Error ? error.message : String(error);
-            useUIStore().raiseError(`Failed to recover the last generated image: ${detail}`, false);
+            if (!recoveryController.signal.aborted) {
+                const detail = error instanceof Error ? error.message : String(error);
+                useUIStore().raiseError(`Failed to recover the last generated image: ${detail}`, false);
+            }
         } finally {
+            if (!recoveryCompleted && attachedToRunningGeneration) {
+                generating.value = false;
+                clearInterval(timer.value.interval);
+                timer.value.interval = 0;
+                timer.value.seconds = 0;
+                stopProgressPolling();
+            }
+            if (abortController.value === recoveryController) abortController.value = null;
             recoveringLastImage.value = false;
         }
     }
@@ -655,9 +776,8 @@ export const useGeneratorStore = defineStore("generator", () => {
         timer.value.interval = setInterval(() => {
             timer.value.seconds++;
         }, 1000);
-        startProgressPolling();
-
         // Loop until queue is done or generation is cancelled
+        let recoveryPending = false;
         while (!queue.value.every(el => el.gathered || el.failed) && !cancelled.value) {
             const next = queue.value.find(
                 q => !q.gathered && !q.failed
@@ -668,6 +788,13 @@ export const useGeneratorStore = defineStore("generator", () => {
                 const res = await fetchNewID(next.params, abortController.value?.signal);
                 if (!res) {
                     next.failed = true;
+                    // Do not submit more jobs after losing the response for a
+                    // poor-connection request. The server may still be working
+                    // on this genkey, and recovery intentionally tracks one job.
+                    if (!cancelled.value && useOptionsStore().keepImageGenOnDisconnect === "Enabled") {
+                        recoveryPending = true;
+                        break;
+                    }
                     continue;
                 }
                 processImages([{ ...res, ...next }]);
@@ -675,6 +802,15 @@ export const useGeneratorStore = defineStore("generator", () => {
                 next.failed = true;
                 console.error('Error fetching image:', error);
             }
+        }
+        if (recoveryPending) {
+            generating.value = false;
+            clearInterval(timer.value.interval);
+            timer.value.interval = 0;
+            timer.value.seconds = 0;
+            stopProgressPolling();
+            queue.value = [];
+            return;
         }
         if (queue.value.some(el => el.failed) && queue.value.every(el => el.gathered || el.failed)) {
             generating.value = false;
@@ -910,19 +1046,21 @@ export const useGeneratorStore = defineStore("generator", () => {
         try {
             const genkey = getNewGenkey();
             lastImageGenkey.value = genkey;
-            lastImageRecoveryAttemptedGenkey.value = "";
+            activeImageGenkey.value = genkey;
             const requestParameters = {
                 ...parameters,
                 genkey,
             };
-            const response: Response = await fetch(buildApiUrl(optionsStore.baseURL, `/sdapi/v1/${parameters.init_images.length > 0 ? 'img' : 'txt'}2img`), {
+            const responsePromise = fetch(buildApiUrl(optionsStore.baseURL, `/sdapi/v1/${parameters.init_images.length > 0 ? 'img' : 'txt'}2img`), {
                 method: "POST",
                 headers: {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify(requestParameters),
                 signal
-            })
+            });
+            startProgressPolling();
+            const response: Response = await responsePromise;
             const resJSON = await response.json();
             if (!validateResponse(response, resJSON, 200, "Failed to fetch", onInvalidResponse)) return false;
             return resJSON;
@@ -1168,11 +1306,14 @@ export const useGeneratorStore = defineStore("generator", () => {
 
     async function fetchProgressInfo(): Promise<void> {
         const optionsStore = useOptionsStore();
+        const genkey = activeImageGenkey.value;
+        if (!genkey) return;
         try {
             // lightweight poll for numbers
-            const response = await fetch(buildApiUrl(optionsStore.baseURL, `/sdapi/v1/progress?skip_current_image=true&genkey=${encodeURIComponent(lastImageGenkey.value)}`));
+            const response = await fetch(buildApiUrl(optionsStore.baseURL, `/sdapi/v1/progress?skip_current_image=true&genkey=${encodeURIComponent(genkey)}`));
             if (!response.ok) return;
             const data = await response.json();
+            if (activeImageGenkey.value !== genkey) return;
             if (DEBUG_MODE) console.error('progressInfo:', data);
 
             progressInfo.value = {
@@ -1183,8 +1324,8 @@ export const useGeneratorStore = defineStore("generator", () => {
                 previewImage: progressInfo.value?.previewImage ?? null
             };
 
-            if (lastPreviewKey.value != lastImageGenkey.value) {
-                lastPreviewKey.value = lastImageGenkey.value;
+            if (lastPreviewKey.value != genkey) {
+                lastPreviewKey.value = genkey;
                 lastPreviewStep.value = -1;
             }
 
@@ -1193,7 +1334,7 @@ export const useGeneratorStore = defineStore("generator", () => {
                 lastPreviewStep.value = currentStep;
                 // Only fetch preview image if set to "Image"
                 if (optionsStore.fetchGenerationProgress === "Image") {
-                    fetchPreviewImage();
+                    fetchPreviewImage(genkey);
                 }
             }
         } catch {
@@ -1201,13 +1342,14 @@ export const useGeneratorStore = defineStore("generator", () => {
         }
     }
 
-    async function fetchPreviewImage(): Promise<void> {
+    async function fetchPreviewImage(genkey = activeImageGenkey.value): Promise<void> {
         const optionsStore = useOptionsStore();
+        if (!genkey) return;
         try {
-            const response = await fetch(buildApiUrl(optionsStore.baseURL, `/sdapi/v1/progress?genkey=${encodeURIComponent(lastImageGenkey.value)}`));
+            const response = await fetch(buildApiUrl(optionsStore.baseURL, `/sdapi/v1/progress?genkey=${encodeURIComponent(genkey)}`));
             if (!response.ok) return;
             const data = await response.json();
-            if (data.current_image && progressInfo.value) {
+            if (activeImageGenkey.value === genkey && data.current_image && progressInfo.value) {
                 progressInfo.value.previewImage = data.current_image;
             }
         } catch {
@@ -1222,6 +1364,7 @@ export const useGeneratorStore = defineStore("generator", () => {
         if (useOptionsStore().fetchGenerationProgress === "Off") return;
         progressInfo.value = { percentage: 0, textInfo: null, currentStep: 0, totalSteps: 0, previewImage: null };
         progressInterval.value = setInterval(fetchProgressInfo, 2000);
+        void fetchProgressInfo();
     }
 
     function stopProgressPolling(): void {
@@ -1229,6 +1372,7 @@ export const useGeneratorStore = defineStore("generator", () => {
             clearInterval(progressInterval.value);
             progressInterval.value = 0;
         }
+        activeImageGenkey.value = "";
         progressInfo.value = null;
     }
 
@@ -1286,6 +1430,7 @@ export const useGeneratorStore = defineStore("generator", () => {
         lastImageRecoveryUrl,
         lastImageRecoveryAvailable,
         clearLastImageGenkey,
+        cancelImageGeneration,
         recoverLastGeneratedImage,
         // Constants
         validGeneratorTypes,

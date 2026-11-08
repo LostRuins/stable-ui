@@ -571,14 +571,7 @@ handleUrlParams();
                     class="generate-cancel-btn"
                     style="width: 25%;"
                     :disabled="store.cancelled"
-                    @click="() => {
-                        store.abortController?.abort();
-                        store.cancelled = true;
-                        store.generating = false;
-                        store.clearQueue();
-                        store.clearLastImageGenkey();
-                        store.stopProgressPolling();
-                    }"
+                    @click="store.cancelImageGeneration()"
                 >Cancel all</el-button>
             </div>
             <div class="image center-horizontal">
@@ -610,7 +603,7 @@ handleUrlParams();
                     type="primary"
                     @click="store.recoverLastGeneratedImage()"
                 >
-                    Recover last generated image
+                    Resume or recover image generation
                 </el-link>
                 <el-link
                     v-else-if="store.lastImageRecoveryAvailable"
