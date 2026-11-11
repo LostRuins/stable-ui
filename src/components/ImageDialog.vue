@@ -12,6 +12,7 @@ import { useGeneratorStore } from '@/stores/generator';
 import { downloadImage, downloadVideo } from '@/utils/download';
 import { acquireOutputBlobUrl } from '@/utils/useOutputBlobUrl';
 import { releaseUrl } from '@/utils/blobCache';
+import { getPromptParts, toMediaBlob, mediaToDataUrl } from '@/utils/media';
 
 const store = useOutputStore();
 const uiStore = useUIStore();
@@ -42,6 +43,8 @@ const currentImageUrl = computed(() => displayed.value?.url);
 const animationDownloadLabel = computed(() =>
     currentOutput.value?.imageFormat === "gif" ? "[Download GIF]" : "[Download WEBP]"
 );
+
+const promptParts = computed(() => getPromptParts(currentOutput.value ?? {}));
 
 async function clearDisplayed() {
     const previous = displayed.value;
@@ -126,23 +129,28 @@ function handleDelete(id: number) {
 }
 
 function extendVideo() {
-    // the view model has no final_frame string: re-read the row at click time
+    // the view model has no final_frame: re-read the row at click time
     const id = currentOutput.value?.id;
     if (id === undefined) return;
-    db.outputs.get(id).then(row => {
-        if (row?.final_frame) {
-            const gstore = useGeneratorStore();
-            gstore.generateImg2Img(row.final_frame);
-        }
+    db.outputs.get(id).then(async row => {
+        if (!row?.final_frame) return;
+        // img2img needs a data-URL string (fabric + init_images)
+        const source = await mediaToDataUrl(row.final_frame);
+        if (!source) return;
+        const gstore = useGeneratorStore();
+        gstore.generateImg2Img(source);
     });
 }
 
 function downloadAnimation() {
-    // the view model has no image string: re-read the row at click time
+    // the view model has no image: re-read the row at click time
     const id = currentOutput.value?.id;
     if (id === undefined) return;
     db.outputs.get(id).then(row => {
-        if (row) downloadImage(row.image, `${row.seed}-${row.prompt}`, true);
+        if (!row) return;
+        const image = toMediaBlob(row.image);
+        if (!image) return;
+        downloadImage(image, `${row.seed}-${row.prompt}`, true);
     });
 }
 
@@ -152,11 +160,10 @@ function downloadAvi() {
     if (id === undefined) return;
     db.outputs.get(id).then(row => {
         if (!row?.extra_avi) return;
-        // extra_avi format: data:video/avi;base64,AAAA...
-        const base64 = row.extra_avi.split(',')[1];
-        if (!base64) return;
+        const avi = toMediaBlob(row.extra_avi);
+        if (!avi) return;
         const filename = `output-${row.id ?? 'video'}.avi`;
-        downloadVideo(base64, filename);
+        downloadVideo(avi, filename);
     });
 }
 </script>
@@ -183,9 +190,9 @@ function downloadAvi() {
                 />
             </div>
         </div>
-        <div style="font-size: 16px; font-weight: 500;">{{currentOutput?.prompt?.split("###")[0] || 'Unknown Creation'}}</div>
+        <div style="font-size: 16px; font-weight: 500;">{{promptParts.prompt || 'Unknown Creation'}}</div>
         <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; letter-spacing: 0.025em;">
-            <div>Negative Prompt: {{currentOutput?.prompt?.split("###")[1] || "None"}}</div>
+            <div>Negative Prompt: {{promptParts.negative_prompt || "None"}}</div>
             <span>Model: {{currentOutput?.modelName || "Unknown"}} - </span>
             <span>Sampler: {{currentOutput?.sampler_name || "Unknown"}} - </span>
             <span>Scheduler: {{currentOutput?.scheduler || "Unknown"}} - </span>

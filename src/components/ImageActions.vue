@@ -17,6 +17,7 @@ import {
 import { deflateRaw } from 'pako';
 import { downloadImage, downloadVideo } from '@/utils/download'
 import { useUIStore } from "@/stores/ui";
+import { getPromptParts, joinPrompts, toMediaBlob, mediaToDataUrl } from '@/utils/media';
 
 const store = useGeneratorStore();
 const outputStore = useOutputStore();
@@ -30,9 +31,10 @@ const props = defineProps<{
 /**
  * ImageActions receives either a full ImageData row (gallery dialog) or a
  * string-free OutputViewModel (generation carousel). Consumers that need the
- * data-URL strings (image/extra_avi/final_frame) re-read the row from the DB
- * at click time; for a full row this is the identity, so their behavior is
- * unchanged.
+ * media (image/extra_avi/final_frame) re-read the row from the DB at click
+ * time and normalize it through `toMediaBlob`/`mediaToDataUrl` (which handle
+ * both the legacy data-URL strings and native Blobs); for a full row this is
+ * the identity, so their behavior is unchanged.
  * */
 const rowOf = async (imageData: ImageData | OutputViewModel): Promise<ImageData | undefined> =>
     "image" in imageData ? imageData : db.outputs.get(imageData.id);
@@ -65,13 +67,15 @@ const downloadImageButton = async (imageData: ImageData | OutputViewModel) => {
         // Preserve the existing behavior: when an AVI sidecar was requested,
         // the generic Download button prefers it. The dialog also exposes the
         // primary WebP (or legacy GIF) as a separate download.
-        const base64 = row.extra_avi.split(',')[1];
-        if (!base64) return;
+        const avi = toMediaBlob(row.extra_avi);
+        if (!avi) return;
         const filename = `${row.seed}-${row.prompt}.avi`;
-        downloadVideo(base64,filename);
+        downloadVideo(avi, filename);
         return;
     }
-    downloadImage(row.image, `${row.seed}-${row.prompt}`, Boolean(row.frames && row.frames > 1));
+    const image = toMediaBlob(row.image);
+    if (!image) return;
+    downloadImage(image, `${row.seed}-${row.prompt}`, Boolean(row.frames && row.frames > 1));
 }
 
 const dismissImage = () => {
@@ -84,8 +88,10 @@ async function copyLink(imageData: ImageData | OutputViewModel) {
     const row = await rowOf(imageData);
     if (!row) return;
     const urlBase = window.location.origin;
+    // the share-link payload carries the ' ### '-concatenated form
+    const linkPromptParts = getPromptParts(row);
     const linkParams = {
-        prompt: row.prompt,
+        prompt: joinPrompts(linkPromptParts.prompt, linkPromptParts.negative_prompt),
         width: row.width ? row.width : undefined,
         height: row.height ? row.height : undefined,
         steps: row.steps,
@@ -98,8 +104,10 @@ async function copyLink(imageData: ImageData | OutputViewModel) {
         frames: row.frames,
         fps: row.fps,
         scheduler: row.scheduler,
-        extra_avi: row.extra_avi,
-        final_frame: row.final_frame,
+        // the share-link payload carries data-URL strings; encode blob media
+        // at the boundary (legacy strings pass through verbatim)
+        extra_avi: await mediaToDataUrl(row.extra_avi),
+        final_frame: await mediaToDataUrl(row.final_frame),
         enable_hr: row.enable_hr,
         send_as_refimg: row.send_as_refimg,
         lora_meta: row.lora_meta
@@ -134,12 +142,19 @@ async function startTxt2Img(imageData: ImageData | OutputViewModel) {
 
 async function startImg2Img(imageData: ImageData | OutputViewModel) {
     const row = await rowOf(imageData);
-    if (row) store.generateImg2Img(row.image);
+    if (!row) return;
+    // img2img needs a data-URL string (fabric + init_images)
+    const source = await mediaToDataUrl(row.image);
+    if (!source) return;
+    store.generateImg2Img(source);
 }
 
 async function startInpainting(imageData: ImageData | OutputViewModel) {
     const row = await rowOf(imageData);
-    if (row) store.generateInpainting(row.image);
+    if (!row) return;
+    const source = await mediaToDataUrl(row.image);
+    if (!source) return;
+    store.generateInpainting(source);
 }
 </script>
 

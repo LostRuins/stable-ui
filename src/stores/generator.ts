@@ -14,6 +14,7 @@ import { parsePromptSegments, expandPromptSegments } from "@/utils/expansions";
 import { convertToBase64 } from "@/utils/base64";
 import { buildApiUrl } from "@/utils/api";
 import { parseExtraRequestFields } from "@/utils/extraRequestFields";
+import { splitStoredPrompt, getPromptParts, base64ToBlob } from "@/utils/media";
 function getDefaultStore() {
     return {
         steps: 20,
@@ -869,13 +870,25 @@ export const useGeneratorStore = defineStore("generator", () => {
                 const mime = animated && (videoOutputType === 3 || videoOutputType === 4)
                     ? 'webp'
                     : (animated ? 'gif' : 'png');
-                const extra_avi = (image.extra_data?(`data:video/avi;base64,${image.extra_data}`):"");
-                const final_frame = (image.final_frame?`data:image/jpeg;base64,${image.final_frame}`:"");
+                // The server returns raw base64; store native Blobs of the
+                // right type (the mime doubles as the old data-URL prefix)
+                const extra_avi = (image.extra_data?base64ToBlob(image.extra_data, "video/avi"):"");
+                const final_frame = (image.final_frame?base64ToBlob(image.final_frame, "image/jpeg"):"");
+                // image.prompt is the concatenated "{positive} ### {negative}"
+                // form in both cases: on the normal path it is this client's
+                // own queue entry (the server receives the fields separately
+                // and never sees the join); on the recovery path it is the
+                // get_last.json payload, where the server joins the request's
+                // prompt and negative_prompt the same way. Split it into the
+                // two stored fields — the ` ### ` join is a storage detail
+                // and never leaves this write edge
+                const { prompt, negative_prompt } = splitStoredPrompt(image.prompt);
                 const params: any = {
                     // The database automatically increments IDs for us
                     id: -1,
-                    image: `data:image/${mime};base64,${img}`,
-                    prompt: image.prompt,
+                    image: base64ToBlob(img, `image/${mime}`),
+                    prompt,
+                    negative_prompt,
                     modelName: image.models[0],
                     frames: image.params.frames,
                     fps: image.params.fps,
@@ -979,9 +992,12 @@ export const useGeneratorStore = defineStore("generator", () => {
             data.height = data.height || defaults.height as number;
         }
         if (data.prompt) {
-            const splitPrompt = data.prompt.split(" ### ");
-            prompt.value = splitPrompt[0];
-            negativePrompt.value = splitPrompt[1] || "";
+            // rows written after the split carry the two fields; legacy rows
+            // (and share-link restores) fall back to splitting the
+            // concatenated prompt
+            const promptParts = getPromptParts(data);
+            prompt.value = promptParts.prompt;
+            negativePrompt.value = promptParts.negative_prompt;
             // the restored prompt carries the stored <lora:> tags; remove any matching row of the
             // non-persisted LoRA list, so regenerating doesn't apply the row's multiplier on top of
             // the tag it was stored from

@@ -11,11 +11,20 @@ import { from } from 'rxjs';
 import { useObservable } from "@vueuse/rxjs";
 import { useLiveQuery } from "@/utils/useLiveQuery";
 import { evict } from "@/utils/blobCache";
+import { splitStoredPrompt, mediaFormat, type MediaField } from "@/utils/media";
 
 export interface ImageData {
     id: number;
-    image: string;
+    /** Data-URL string on legacy rows, native Blob on rows written after the move to blob storage. */
+    image: MediaField;
     prompt?: string;
+    /**
+     * The negative prompt, stored separately from `prompt`. Present on rows
+     * written after the split; legacy rows carry the concatenated
+     * `"{positive} ### {negative}"` form in `prompt` alone and are read
+     * through `getPromptParts` (no migration).
+     */
+    negative_prompt?: string;
     sampler_name?: string;
     seed?: number;
     steps?: number;
@@ -28,8 +37,8 @@ export interface ImageData {
     frames?: number;
     fps?: number;
     scheduler?: string;
-    extra_avi?: string;
-    final_frame?: string;
+    extra_avi?: MediaField;
+    final_frame?: MediaField;
     enable_hr?: 1 | 0;
     send_as_refimg?: 1 | 0;
     eta?: number;
@@ -57,6 +66,8 @@ export type OutputImageFormat = "gif" | "webp" | "png" | "jpeg" | "unknown";
 export interface OutputViewModel {
     id: number;
     prompt?: string;
+    /** Present on rows written after the split — comes through the `...rest` spread. */
+    negative_prompt?: string;
     sampler_name?: string;
     seed?: number;
     steps?: number;
@@ -84,13 +95,6 @@ export interface OutputViewModel {
     type: "image" | "video";
 }
 
-function getImageFormat(dataUrl: string): OutputImageFormat {
-    const match = /^data:image\/(gif|webp|png|jpe?g)(?:;|,)/i.exec(dataUrl);
-    if (!match) return "unknown";
-    const format = match[1].toLowerCase();
-    return format === "jpg" ? "jpeg" : format as OutputImageFormat;
-}
-
 /**
  * Maps a full ImageData row to a string-free OutputViewModel. Blob creation is
  * deliberately deferred until a renderer mounts.
@@ -105,7 +109,7 @@ export function toViewModel(row: ImageData, type: "image" | "video" = "image"): 
         ...rest,
         hasAvi: extra_avi != null && extra_avi !== "",
         hasFinalFrame: final_frame != null && final_frame !== "",
-        imageFormat: getImageFormat(image),
+        imageFormat: mediaFormat(image),
         type,
     };
 }
@@ -185,15 +189,28 @@ export const useOutputStore = defineStore("outputs", () => {
         const newOutputsWithoutID = newOutputs.map(el => {
             // eslint-disable-next-line @typescript-eslint/no-unused-vars
             const { id, ...rest } = el;
+            // Rows without a negative_prompt field (ZIP imports of old
+            // sidecars, legacy localStorage rows) still carry the
+            // concatenated "{positive} ### {negative}" prompt — split it so
+            // every stored row has the two fields. The ` ### ` join is a
+            // storage detail; this is the single normalization point for
+            // rows entering the database.
+            if (rest.negative_prompt === undefined) {
+                const split = splitStoredPrompt(rest.prompt);
+                rest.prompt = split.prompt;
+                rest.negative_prompt = split.negative_prompt;
+            }
             return rest;
         })
         const chunkSize = 50;
         const allIds: IndexableType[] = [];
         for (let i = 0; i < newOutputsWithoutID.length; i += chunkSize) {
             const chunk = newOutputsWithoutID.slice(i, i + chunkSize);
-            const cleanChunk = JSON.parse(JSON.stringify(chunk));
-            console.log(`Inserting outputs into database. Chunk ${i} - ${i + chunkSize}:`, cleanChunk);
-            const chunkIds = await db.outputs.bulkAdd(cleanChunk, undefined, { allKeys: true }) as IndexableType[];
+            // Shallow per-row copy, with the auto-increment key left to
+            // the database
+            const cleanChunk = chunk.map(row => ({ ...row }));
+            console.log(`Inserting outputs into database. Chunk ${i} - ${i + chunkSize}:`, cleanChunk.length, "row(s)");
+            const chunkIds = await db.outputs.bulkAdd(cleanChunk as ImageData[], undefined, { allKeys: true }) as IndexableType[];
             allIds.push(...chunkIds);
         }
         return db.outputs.bulkGet(allIds);
@@ -227,7 +244,7 @@ export const useOutputStore = defineStore("outputs", () => {
                 // Async to speed up
                 pushing.push(
                     new Promise(resolve => {
-                        file.async("base64").then(async (base64) => {
+                        file.async("blob").then(async (blob) => {
                             if (!files[fileName+".json"]) {
                                 outputsFailed++;
                                 return resolve(null);
@@ -236,7 +253,10 @@ export const useOutputStore = defineStore("outputs", () => {
                             outputsAppended++;
                             resolve({
                                 id: -1,
-                                image: `data:image/${mimeType};base64,${base64}`,
+                                // Store a native Blob with the type derived
+                                // from the file extension (the client-side
+                                // File's own mime type is not reliable)
+                                image: new Blob([blob], { type: `image/${mimeType}` }),
                                 ...json,
                                 rated: json.rated ? 1 : 0,
                                 starred: json.starred ? 1 : 0,

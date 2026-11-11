@@ -4,6 +4,7 @@ import { useGeneratorStore } from "./generator";
 import { useOptionsStore } from "./options";
 import { fabric } from "fabric";
 import { downloadImage } from "@/utils/download";
+import { dataUrlToBlob } from "@/utils/media";
 
 export const useCanvasStore = defineStore("canvas", () => {
     interface ICanvasParams {
@@ -517,7 +518,9 @@ export const useCanvasStore = defineStore("canvas", () => {
         const sourceImage = generatorImageProps.value.sourceImage;
         if (!sourceImage) return;
 
-        downloadImage(sourceImage, `${store.generatorType.toLowerCase()}-reference`);
+        // The canvas's source image is always a data-URL string (canvas
+        // toDataURL / uploaded base64) — convert at the boundary
+        downloadImage(dataUrlToBlob(sourceImage), `${store.generatorType.toLowerCase()}-reference`);
     }
 
     async function asyncClone(object: any) {
