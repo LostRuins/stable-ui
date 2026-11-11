@@ -788,6 +788,7 @@ export const useGeneratorStore = defineStore("generator", () => {
         // processed — the post-loop finalization blocks can never then run while
         // a processImages is still in flight.
         let recoveryPending = false;
+        let failedGenkey = "";
         while (!queue.value.every(el => el.gathered || el.failed) && !cancelled.value) {
             const next = queue.value.find(
                 q => !q.gathered && !q.failed
@@ -798,6 +799,7 @@ export const useGeneratorStore = defineStore("generator", () => {
                 const res = await fetchNewID(next.params, abortController.value?.signal);
                 if (!res) {
                     next.failed = true;
+                    failedGenkey = lastImageGenkey.value;
                     // Do not submit more jobs after losing the response for a
                     // poor-connection request. The server may still be working
                     // on this genkey, and recovery intentionally tracks one job.
@@ -810,6 +812,7 @@ export const useGeneratorStore = defineStore("generator", () => {
                 await processImages([{ ...res, ...next }]);
             } catch (error) {
                 next.failed = true;
+                failedGenkey = lastImageGenkey.value;
                 console.error('Error fetching image:', error);
             }
         }
@@ -831,13 +834,14 @@ export const useGeneratorStore = defineStore("generator", () => {
         // A batch with no failures finalizes inside processImages (its
         // outputs.length === queue.length check). Failed items produce no
         // outputs, so that check can never hold for a batch with failures —
-        // finalize it here. If nothing was produced, keep the last genkey:
-        // the last request may have completed server-side (e.g. a dropped
-        // response), so the recovery button must stay available.
+        // finalize it here. Keep the failed request's genkey even when other
+        // requests succeeded, because the failed request may have completed
+        // server-side (e.g. its response was dropped). Later requests can
+        // overwrite lastImageGenkey, so restore the captured failure key.
         if (queue.value.some(el => el.failed) && queue.value.every(el => el.gathered || el.failed)) {
             generating.value = false;
             uiStore.showGeneratedImages = outputs.value.length > 0;
-            if (outputs.value.length > 0) clearLastImageGenkey();
+            if (failedGenkey) lastImageGenkey.value = failedGenkey;
             clearInterval(timer.value.interval);
             timer.value.interval = 0;
             timer.value.seconds = 0;
