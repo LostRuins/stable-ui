@@ -12,7 +12,7 @@ import { validateResponse } from "@/utils/validate";
 import { extractLorasFromPrompt } from "@/utils/loras";
 import { parsePromptSegments, expandPromptSegments } from "@/utils/expansions";
 import { convertToBase64 } from "@/utils/base64";
-import { buildApiUrl } from "@/utils/api";
+import { buildApiUrl, fetchApi } from "@/utils/api";
 import { parseExtraRequestFields } from "@/utils/extraRequestFields";
 function getDefaultStore() {
     return {
@@ -246,7 +246,7 @@ export const useGeneratorStore = defineStore("generator", () => {
         const genkey = lastImageGenkey.value;
         const currentController = abortController.value;
         const interruptRequest = genkey
-            ? fetch(buildApiUrl(useOptionsStore().baseURL, "/sdapi/v1/interrupt"), {
+            ? fetchApi("/sdapi/v1/interrupt", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ genkey }),
@@ -279,8 +279,8 @@ export const useGeneratorStore = defineStore("generator", () => {
     }
 
     async function fetchRecoveredImage(genkey: string, signal: AbortSignal): Promise<any | null> {
-        const response = await fetch(
-            buildApiUrl(useOptionsStore().baseURL, `/sdapi/v1/get_last.json?genkey=${encodeURIComponent(genkey)}`),
+        const response = await fetchApi(
+            `/sdapi/v1/get_last.json?genkey=${encodeURIComponent(genkey)}`,
             { cache: "no-store", signal },
         );
         if (response.ok) return response.json();
@@ -289,8 +289,8 @@ export const useGeneratorStore = defineStore("generator", () => {
     }
 
     async function fetchImageRecoveryStatus(genkey: string, signal: AbortSignal): Promise<"running" | "complete" | "unknown"> {
-        const statusResponse = await fetch(
-            buildApiUrl(useOptionsStore().baseURL, `/sdapi/v1/recovery-status?genkey=${encodeURIComponent(genkey)}`),
+        const statusResponse = await fetchApi(
+            `/sdapi/v1/recovery-status?genkey=${encodeURIComponent(genkey)}`,
             { cache: "no-store", signal },
         );
         if (statusResponse.ok) {
@@ -303,8 +303,8 @@ export const useGeneratorStore = defineStore("generator", () => {
         }
 
         // Compatibility with KoboldCpp versions from before recovery-status.
-        const progressResponse = await fetch(
-            buildApiUrl(useOptionsStore().baseURL, `/sdapi/v1/progress?skip_current_image=true&genkey=${encodeURIComponent(genkey)}`),
+        const progressResponse = await fetchApi(
+            `/sdapi/v1/progress?skip_current_image=true&genkey=${encodeURIComponent(genkey)}`,
             { cache: "no-store", signal },
         );
         if (!progressResponse.ok) return "unknown";
@@ -1070,7 +1070,6 @@ export const useGeneratorStore = defineStore("generator", () => {
      * Fetches a new ID
      */
     async function fetchNewID(parameters: any, signal?: AbortSignal) {
-        const optionsStore = useOptionsStore();
         try {
             const genkey = getNewGenkey();
             lastImageGenkey.value = genkey;
@@ -1079,7 +1078,7 @@ export const useGeneratorStore = defineStore("generator", () => {
                 ...parameters,
                 genkey,
             };
-            const responsePromise = fetch(buildApiUrl(optionsStore.baseURL, `/sdapi/v1/${parameters.init_images.length > 0 ? 'img' : 'txt'}2img`), {
+            const responsePromise = fetchApi(`/sdapi/v1/${parameters.init_images.length > 0 ? 'img' : 'txt'}2img`, {
                 method: "POST",
                 headers: {
                     'Content-Type': 'application/json'
@@ -1107,8 +1106,7 @@ export const useGeneratorStore = defineStore("generator", () => {
      * Updates available models
      * */
     async function updateAvailableModels() {
-        const optionsStore = useOptionsStore();
-        const response = await fetch(buildApiUrl(optionsStore.baseURL, "/sdapi/v1/sd-models"));
+        const response = await fetchApi("/sdapi/v1/sd-models");
         const resJSON: any[] = await response.json();
         if (!validateResponse(response, resJSON, 200, "Failed to get available models")) return;
         if (resJSON.length === 0) return "(No model loaded)";
@@ -1124,9 +1122,8 @@ export const useGeneratorStore = defineStore("generator", () => {
         cacheVersion.value++;
     }
 
-    // Watch baseURL and clear cache if it changes
     watch(
-        () => useOptionsStore().baseURL,
+        [() => useOptionsStore().baseURL, () => useOptionsStore().apiKey],
         () => {
             invalidateApiCaches();
         }
@@ -1141,7 +1138,7 @@ export const useGeneratorStore = defineStore("generator", () => {
         }
         const fetchPromise = (async (): Promise<T | null> => {
             try {
-                const response = await fetch(fullUrl);
+                const response = await fetchApi(endpoint);
                 if (response.ok) {
                     return (await response.json()) as T;
                 }
@@ -1336,7 +1333,7 @@ export const useGeneratorStore = defineStore("generator", () => {
         if (!genkey) return;
         try {
             // lightweight poll for numbers
-            const response = await fetch(buildApiUrl(optionsStore.baseURL, `/sdapi/v1/progress?skip_current_image=true&genkey=${encodeURIComponent(genkey)}`));
+            const response = await fetchApi(`/sdapi/v1/progress?skip_current_image=true&genkey=${encodeURIComponent(genkey)}`);
             if (!response.ok) return;
             const data = await response.json();
             if (activeImageGenkey.value !== genkey) return;
@@ -1369,10 +1366,9 @@ export const useGeneratorStore = defineStore("generator", () => {
     }
 
     async function fetchPreviewImage(genkey = activeImageGenkey.value): Promise<void> {
-        const optionsStore = useOptionsStore();
         if (!genkey) return;
         try {
-            const response = await fetch(buildApiUrl(optionsStore.baseURL, `/sdapi/v1/progress?genkey=${encodeURIComponent(genkey)}`));
+            const response = await fetchApi(`/sdapi/v1/progress?genkey=${encodeURIComponent(genkey)}`);
             if (!response.ok) return;
             const data = await response.json();
             if (activeImageGenkey.value === genkey && data.current_image && progressInfo.value) {

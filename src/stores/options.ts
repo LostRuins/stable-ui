@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { useColorMode, useLocalStorage, type BasicColorSchema } from '@vueuse/core'
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 
 type IToggle = "Enabled" | "Disabled";
 type IPreviewImageOnProgress = "Off" | "Text" | "Image";
@@ -22,7 +22,13 @@ export const useOptionsStore = defineStore("options", () => {
     const useBeta = useLocalStorage<IToggle>("useBeta", "Disabled");
     const imageDownloadType = useLocalStorage<"WEBP" | "PNG" | "JPG" | "GIF" >("imageDownloadType", "PNG")
     const imageResizeMode = useLocalStorage<"NoScale" | "Stretch" | "ScaleAndCrop" | "ScaleAndPad" | "Original">("imageResizeMode", "NoScale");
-    const baseURL = useLocalStorage("baseURL", "");
+    const baseURL = useLocalStorage("baseURL", "", { flush: "post" });
+    const apiKey = useLocalStorage("apiKey", "");
+
+    // Clear the key before requests use the new URL and before the URL is saved.
+    watch(baseURL, () => {
+        apiKey.value = "";
+    }, { flush: "sync" });
 
     // A janky way to fix using color modes
     options.value.colorMode = useColorMode<BasicColorSchema>({
@@ -44,6 +50,7 @@ export const useOptionsStore = defineStore("options", () => {
         useBeta,
         imageDownloadType,
         imageResizeMode,
-        baseURL
+        baseURL,
+        apiKey
     };
 });

@@ -1,8 +1,7 @@
 import { validateResponse } from "@/utils/validate";
-import { buildApiUrl } from "@/utils/api";
+import { fetchApi } from "@/utils/api";
 import { defineStore } from "pinia";
 import { ref } from "vue";
-import { useOptionsStore } from "./options";
 import { useUIStore } from "./ui";
 
 export interface InterrogationInfo {
@@ -15,32 +14,42 @@ export const useInterrogationStore = defineStore("interrogate", () => {
     const currentInterrogation = ref<InterrogationInfo>({});
     const interrogating = ref(false);
 
-    async function onError(msg: string) {
-        const uiStore = useUIStore();
-        uiStore.raiseError(msg, false);
-        interrogating.value = false;
-        currentInterrogation.value = {};
+    function onError(msg: string) {
+        resetInterrogation();
+        useUIStore().raiseError(msg, false);
     }
 
     async function interrogateImage() {
-        const optionsStore = useOptionsStore();
         const { source_image } = currentInterrogation.value;
         if (!source_image) return onError("Failed to get interrogation ID: No image supplied.");
         interrogating.value = true;
-        const response = await fetch(buildApiUrl(optionsStore.baseURL, "/sdapi/v1/interrogate"), {
-            method: "POST",
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                image: source_image.split(",")[1],
-                model: "clip",
-            })
-        });
-        const json: any = await response.json();
-        if (!validateResponse(response, json, 200, "Failed to get interrogation", onError)) return;
-        currentInterrogation.value.id = json.id;
-        currentInterrogation.value.status = json.caption;
+        try {
+            const response = await fetchApi("/sdapi/v1/interrogate", {
+                method: "POST",
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    image: source_image.split(",")[1],
+                    model: "clip",
+                })
+            });
+            if (response.status === 401 || response.status === 403) {
+                return onError(`The server denied the interrogation request (HTTP ${response.status}). Check the API key in Options.`);
+            }
+            const json = await response.json().catch(() => null);
+            if (json === null) {
+                return onError(response.ok
+                    ? "The server returned an invalid interrogation response."
+                    : `The interrogation request failed (HTTP ${response.status}).`);
+            }
+            if (!validateResponse(response, json, 200, "Failed to get interrogation", onError)) return;
+            currentInterrogation.value.id = json.id;
+            currentInterrogation.value.status = json.caption;
+            interrogating.value = false;
+        } catch {
+            onError("Could not complete the interrogation request.");
+        }
     }
 
     function resetInterrogation() {

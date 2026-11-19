@@ -95,6 +95,9 @@ async function bulkDownload() {
                         </template>
                     </el-input>
                 </el-form-item>
+                <el-form-item label="API Key (optional)">
+                    <el-input v-model="store.apiKey" type="password" show-password />
+                </el-form-item>
                 <h3>Parameter Controls</h3>
                 <div v-for="(item, key) in generatorStore.multiSelect" :key="key" >
                     <form-radio :label="item.name" prop="pageless" v-model="item.state" :options="item.allowedStates ?? []" />
