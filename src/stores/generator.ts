@@ -226,6 +226,11 @@ export const useGeneratorStore = defineStore("generator", () => {
     const outputs    = ref<CarouselOutput[]>([]);
     const abortController = ref<AbortController | null>(null);
     const queue = ref<ICurrentGeneration[]>([]);
+    // Monotonic per-batch token (non-reactive bookkeeping): every new generation
+    // takes the next value and it is never reset, so a worker loop or a
+    // processImages call from a superseded batch can always detect it
+    // (token < generationToken) and stop touching the shared queue/outputs.
+    let generationToken = 0;
     // Recovery belongs to the tab which submitted the request. localStorage is
     // shared across tabs and allowed another tab's generation to overwrite this
     // key, causing recovery to attach to the wrong active image generation.
@@ -360,7 +365,7 @@ export const useGeneratorStore = defineStore("generator", () => {
                         prompt: recovered.prompt ?? recoveredParams.prompt ?? "",
                         params: recoveredParams,
                         models: recovered.models ?? [recovered.modelName ?? "(Unknown model)"],
-                    }], true);
+                    }], true, generationToken);
                     recoveryCompleted = true;
                     return;
                 }
@@ -747,6 +752,7 @@ export const useGeneratorStore = defineStore("generator", () => {
         if (DEBUG_MODE) console.log("Using generation parameters:", paramsCached)
 
         let is_new_generation = false;
+        let myToken = 0;
         if(!generating.value)
         {
             is_new_generation = true;
@@ -755,6 +761,10 @@ export const useGeneratorStore = defineStore("generator", () => {
             // worker loop has not finalized yet), so they don't count against the
             // pending-request limit below.
             queue.value = [];
+            // This batch's token: the loop and processImages below must not
+            // finalize if a newer generation has started, which then owns the
+            // queue/outputs.
+            myToken = generationToken++;
         }
         generating.value = true;
         uiStore.showGeneratedImages = false;
@@ -806,7 +816,9 @@ export const useGeneratorStore = defineStore("generator", () => {
         // a processImages is still in flight.
         let recoveryPending = false;
         let failedGenkey = "";
-        while (!queue.value.every(el => el.gathered || el.failed) && !cancelled.value) {
+        while (myToken === generationToken
+            && !queue.value.every(el => el.gathered || el.failed)
+            && !cancelled.value) {
             const next = queue.value.find(
                 q => !q.gathered && !q.failed
             );
@@ -826,13 +838,18 @@ export const useGeneratorStore = defineStore("generator", () => {
                     }
                     continue;
                 }
-                await processImages([{ ...res, ...next }]);
+                await processImages([{ ...res, ...next }], false, myToken);
             } catch (error) {
                 next.failed = true;
                 failedGenkey = lastImageGenkey.value;
                 console.error('Error fetching image:', error);
             }
         }
+        // A newer generation may have started while this loop was awaiting; it
+        // owns the queue/outputs, so a superseded loop must not finalize the
+        // batch (and, per the loop condition above, has not picked up any of
+        // its items).
+        if (myToken < generationToken) return;
         if (recoveryPending) {
             // A batch that ends in a pending recovery never satisfies
             // processImages' finalization check (the queue is cleared below),
@@ -875,7 +892,7 @@ export const useGeneratorStore = defineStore("generator", () => {
     /**
      * Called when a generation is finished.
      * */
-    async function processImages(finalImages: any[], finalizeRecovery = false) {
+    async function processImages(finalImages: any[], finalizeRecovery = false, token: number) {
         const store = useOutputStore();
 
         console.log(finalImages)
@@ -938,6 +955,14 @@ export const useGeneratorStore = defineStore("generator", () => {
 
         const newOutputs = await store.pushOutputs(finalParams) as ImageData[];
 
+        // A newer generation may have started while the outputs were being
+        // written to the database; it owns the queue/outputs. The images are
+        // persisted above, but a superseded call must not append them to the
+        // new batch's carousel (they would leak into it and inflate the
+        // finalize check's length comparison). Bail before touching reactive
+        // state.
+        if (token !== generationToken) return finalParams;
+
         // The index should the same for each of these outputs
         const index = 0;
 
@@ -952,7 +977,11 @@ export const useGeneratorStore = defineStore("generator", () => {
             ...outputs.value,
         ].sort((a,b) => a.index - b.index);
 
-        if (finalizeRecovery || outputs.value.length === queue.value.length) {
+        // Only finalize if this call is still the current generation: a newer
+        // batch owns the queue/outputs if one started while the outputs were
+        // being written to the database.
+        if (token === generationToken
+            && (finalizeRecovery || outputs.value.length === queue.value.length)) {
             queue.value = [];
             generating.value = false;
             useUIStore().showGeneratedImages = true;
