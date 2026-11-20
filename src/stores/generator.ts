@@ -226,6 +226,16 @@ export const useGeneratorStore = defineStore("generator", () => {
     const outputs    = ref<CarouselOutput[]>([]);
     const abortController = ref<AbortController | null>(null);
     const queue = ref<ICurrentGeneration[]>([]);
+    // Monotonic per-batch epoch counter (non-reactive bookkeeping): every new
+    // generation takes the next value, and superseded holders (a worker loop or
+    // a processImages call from an older batch) detect that by range comparison
+    // (myEpoch < epochCounter) and stop touching the shared queue/outputs.
+    // It must never be reset (short of a whole-application reset): a reset would
+    // make stale holders with larger epochs look current again and reintroduce
+    // the races this counter settles. Because holders only ask "am I behind?",
+    // any other discontinuity event (e.g. cancellation) may also bump it
+    // harmlessly if a future fix needs to invalidate them.
+    let epochCounter = 0;
     // Recovery belongs to the tab which submitted the request. localStorage is
     // shared across tabs and allowed another tab's generation to overwrite this
     // key, causing recovery to attach to the wrong active image generation.
@@ -360,7 +370,7 @@ export const useGeneratorStore = defineStore("generator", () => {
                         prompt: recovered.prompt ?? recoveredParams.prompt ?? "",
                         params: recoveredParams,
                         models: recovered.models ?? [recovered.modelName ?? "(Unknown model)"],
-                    }], true);
+                    }], true, epochCounter);
                     recoveryCompleted = true;
                     return;
                 }
@@ -747,6 +757,7 @@ export const useGeneratorStore = defineStore("generator", () => {
         if (DEBUG_MODE) console.log("Using generation parameters:", paramsCached)
 
         let is_new_generation = false;
+        let myEpoch = 0;
         if(!generating.value)
         {
             is_new_generation = true;
@@ -755,6 +766,10 @@ export const useGeneratorStore = defineStore("generator", () => {
             // worker loop has not finalized yet), so they don't count against the
             // pending-request limit below.
             queue.value = [];
+            // This batch's epoch: the loop and processImages below must not
+            // finalize if a newer generation has started, which then owns the
+            // queue/outputs.
+            myEpoch = ++epochCounter;
         }
         generating.value = true;
         uiStore.showGeneratedImages = false;
@@ -804,9 +819,14 @@ export const useGeneratorStore = defineStore("generator", () => {
         // awaited, so the loop can only exit once every picked item has fully
         // processed — the post-loop finalization blocks can never then run while
         // a processImages is still in flight.
+        // "!superseded" is a range test (myEpoch < epochCounter), not an
+        // equality check: any newer value — from a new generation or otherwise —
+        // retires this loop.
         let recoveryPending = false;
         let failedGenkey = "";
-        while (!queue.value.every(el => el.gathered || el.failed) && !cancelled.value) {
+        while (!(myEpoch < epochCounter)
+            && !queue.value.every(el => el.gathered || el.failed)
+            && !cancelled.value) {
             const next = queue.value.find(
                 q => !q.gathered && !q.failed
             );
@@ -826,13 +846,18 @@ export const useGeneratorStore = defineStore("generator", () => {
                     }
                     continue;
                 }
-                await processImages([{ ...res, ...next }]);
+                await processImages([{ ...res, ...next }], false, myEpoch);
             } catch (error) {
                 next.failed = true;
                 failedGenkey = lastImageGenkey.value;
                 console.error('Error fetching image:', error);
             }
         }
+        // A newer generation may have started while this loop was awaiting; it
+        // owns the queue/outputs, so a superseded loop must not finalize the
+        // batch (and, per the loop condition above, has not picked up any of
+        // its items).
+        if (myEpoch < epochCounter) return;
         if (recoveryPending) {
             // A batch that ends in a pending recovery never satisfies
             // processImages' finalization check (the queue is cleared below),
@@ -875,7 +900,7 @@ export const useGeneratorStore = defineStore("generator", () => {
     /**
      * Called when a generation is finished.
      * */
-    async function processImages(finalImages: any[], finalizeRecovery = false) {
+    async function processImages(finalImages: any[], finalizeRecovery = false, epoch: number) {
         const store = useOutputStore();
 
         console.log(finalImages)
@@ -938,6 +963,14 @@ export const useGeneratorStore = defineStore("generator", () => {
 
         const newOutputs = await store.pushOutputs(finalParams) as ImageData[];
 
+        // A newer generation may have started while the outputs were being
+        // written to the database; it owns the queue/outputs. The images are
+        // persisted above, but a superseded call must not append them to the
+        // new batch's carousel (they would leak into it and inflate the
+        // finalize check's length comparison). Bail before touching reactive
+        // state.
+        if (epoch < epochCounter) return finalParams;
+
         // The index should the same for each of these outputs
         const index = 0;
 
@@ -952,7 +985,11 @@ export const useGeneratorStore = defineStore("generator", () => {
             ...outputs.value,
         ].sort((a,b) => a.index - b.index);
 
-        if (finalizeRecovery || outputs.value.length === queue.value.length) {
+        // Only finalize if this call is not superseded (range test, as above): a
+        // newer batch owns the queue/outputs if one started while the outputs
+        // were being written to the database.
+        if (!(epoch < epochCounter)
+            && (finalizeRecovery || outputs.value.length === queue.value.length)) {
             queue.value = [];
             generating.value = false;
             useUIStore().showGeneratedImages = true;
