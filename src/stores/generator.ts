@@ -14,6 +14,7 @@ import { parsePromptSegments, expandPromptSegments } from "@/utils/expansions";
 import { convertToBase64 } from "@/utils/base64";
 import { buildApiUrl, fetchApi } from "@/utils/api";
 import { parseExtraRequestFields } from "@/utils/extraRequestFields";
+import { batchShouldFinalize } from "@/utils/generation";
 function getDefaultStore() {
     return {
         steps: 20,
@@ -260,7 +261,14 @@ export const useGeneratorStore = defineStore("generator", () => {
         currentController?.abort();
         cancelled.value = true;
         generating.value = false;
-        clearQueue();
+        // The queue is intentionally NOT cleared here: the worker loop of the
+        // cancelled generateImage is still running (possibly inside an in-flight
+        // processImages) and finalizes the batch itself — showing the collected
+        // outputs and clearing the queue. Wiping the queue here would break both
+        // finalization checks (processImages compares outputs to queue length,
+        // the post-loop block looks for failed items), leaving
+        // showGeneratedImages false while outputs are non-empty: the generation
+        // screen then renders neither carousel nor canvas (a blank screen).
         clearLastImageGenkey();
         stopProgressPolling();
         clearInterval(timer.value.interval);
@@ -451,6 +459,11 @@ export const useGeneratorStore = defineStore("generator", () => {
         useUIStore().showGeneratedImages = false;
         clearQueue();
         clearLastImageGenkey();
+        // The canvas store keeps its own (per type) canvas/layers, which would
+        // otherwise survive the reset: the next generateImage's saveImages() would
+        // then resurrect a source image from the stale layers and silently turn
+        // the generation into an img2img of an image the user removed.
+        useCanvasStore().resetAllCanvases();
         return true;
     }
 
@@ -738,6 +751,10 @@ export const useGeneratorStore = defineStore("generator", () => {
         {
             is_new_generation = true;
             outputs.value = [];
+            // Drop a previous batch's leftover items (e.g. a cancelled batch whose
+            // worker loop has not finalized yet), so they don't count against the
+            // pending-request limit below.
+            queue.value = [];
         }
         generating.value = true;
         uiStore.showGeneratedImages = false;
@@ -834,11 +851,14 @@ export const useGeneratorStore = defineStore("generator", () => {
         // A batch with no failures finalizes inside processImages (its
         // outputs.length === queue.length check). Failed items produce no
         // outputs, so that check can never hold for a batch with failures —
-        // finalize it here. Keep the failed request's genkey even when other
+        // finalize it here. A cancelled batch is finalized here too: its pending
+        // items are abandoned, so the "every item done" checks can never hold for
+        // it (cancelImageGeneration deliberately leaves the queue intact for this
+        // finalization). Keep the failed request's genkey even when other
         // requests succeeded, because the failed request may have completed
         // server-side (e.g. its response was dropped). Later requests can
         // overwrite lastImageGenkey, so restore the captured failure key.
-        if (queue.value.some(el => el.failed) && queue.value.every(el => el.gathered || el.failed)) {
+        if (batchShouldFinalize(cancelled.value, queue.value)) {
             generating.value = false;
             uiStore.showGeneratedImages = outputs.value.length > 0;
             if (failedGenkey) lastImageGenkey.value = failedGenkey;
