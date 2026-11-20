@@ -461,21 +461,36 @@ export const useCanvasStore = defineStore("canvas", () => {
         return newGroup;
     }
 
+    function resetCanvasParams(params: ICanvasParams) {
+        if (!params.canvas) return;
+        if (params.visibleImageLayer) {
+            params.canvas.remove(params.visibleImageLayer);
+            params.visibleImageLayer = undefined;
+        }
+        if (params.visibleDrawLayer) {
+            params.canvas.remove(params.visibleDrawLayer);
+            params.visibleDrawLayer = undefined;
+        }
+        params.imageLayer = undefined;
+        params.drawLayer = undefined;
+        params.redoHistory = [];
+        params.undoHistory = [];
+        params.canvas.isDrawingMode = false;
+    }
+
     function resetCanvas() {
-        if (!imageProps.value.canvas) return;
-        if (imageProps.value.visibleImageLayer) {
-            imageProps.value.canvas.remove(imageProps.value.visibleImageLayer);
-            imageProps.value.visibleImageLayer = undefined;
-        }
-        if (imageProps.value.visibleDrawLayer) {
-            imageProps.value.canvas.remove(imageProps.value.visibleDrawLayer);
-            imageProps.value.visibleDrawLayer = undefined;
-        }
-        imageProps.value.imageLayer = undefined;
-        imageProps.value.drawLayer = undefined;
-        imageProps.value.redoHistory = [];
-        imageProps.value.undoHistory = [];
-        imageProps.value.canvas.isDrawingMode = false;
+        resetCanvasParams(imageProps.value);
+    }
+
+    /**
+     * Resets both per-type canvas states (inpainting and img2img). Used by the
+     * generator store's reset, which clears the source images without touching
+     * this store — leaving the stale layers would let the next saveImages()
+     * resurrect a source image from them.
+     * */
+    function resetAllCanvases() {
+        resetCanvasParams(inpainting.value);
+        resetCanvasParams(img2img.value);
     }
 
     function resetDrawing() {
@@ -578,6 +593,7 @@ export const useCanvasStore = defineStore("canvas", () => {
         downloadMask,
         downloadSourceImage,
         resetCanvas,
+        resetAllCanvases,
         resetDrawing,
         flipErase,
         undoAction,
