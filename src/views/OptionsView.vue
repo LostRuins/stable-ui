@@ -103,6 +103,7 @@ async function bulkDownload() {
                     <form-radio :label="item.name" prop="pageless" v-model="item.state" :options="item.allowedStates ?? []" />
                 </div>
                 <form-radio  label="Allow Larger Params" prop="pageless" v-model="store.allowLargerParams" :options="['Enabled', 'Disabled']" />
+                <form-radio label="Expand Prompt Matrix" prop="expandPromptMatrix" v-model="store.expandPromptMatrix" :options="['Enabled', 'Disabled']" info="When enabled, expand '{a|b}' alternatives in the prompt into multiple generations, one prompt per combination (e.g. 'A {book|vase} over the desk' generates two images: 'A book over the desk' and 'A vase over the desk'. When disabled, the prompt is sent to the server verbatim." />
                 <form-radio  label="Poor Connection Mode" prop="keepImageGenOnDisconnect" v-model="store.keepImageGenOnDisconnect" :options="['Enabled', 'Disabled']" info="Provides compatibility for poor connections or when using unreliable tunnels. Prevents abort on disconnecting, and allows ongoing generations to carry on and be recovered later even after disconnecting." />
                 <form-radio  label="Fetch generation progress" prop="fetchGenerationProgress" v-model="store.fetchGenerationProgress" :options="['Off', 'Text', 'Image']" info="Off: no progress polling. Text: fetch textual progress info only. Image: fetch textual info and live image preview." />
                 <form-select

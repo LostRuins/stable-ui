@@ -1138,6 +1138,7 @@ export const useGeneratorStore = defineStore("generator", () => {
      */
     function promptMatrix() {
         const prompt = getFullPrompt();
+        if (useOptionsStore().expandPromptMatrix !== "Enabled") return [prompt];
         return expandPromptSegments(parsePromptSegments(prompt));
     }
 

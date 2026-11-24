@@ -19,6 +19,7 @@ export const useOptionsStore = defineStore("options", () => {
     const keepImageGenOnDisconnect = useLocalStorage<IToggle>("keepImageGenOnDisconnect", "Disabled");
     const fetchGenerationProgress = useLocalStorage<IPreviewImageOnProgress>("fetchGenerationProgress", "Text");
     const autoCarousel = useLocalStorage<IToggle>("autoCarousel", "Enabled");
+    const expandPromptMatrix = useLocalStorage<IToggle>("expandPromptMatrix", "Enabled");
     const useBeta = useLocalStorage<IToggle>("useBeta", "Disabled");
     const imageDownloadType = useLocalStorage<"WEBP" | "PNG" | "JPG" | "GIF" >("imageDownloadType", "PNG")
     const imageResizeMode = useLocalStorage<"NoScale" | "Stretch" | "ScaleAndCrop" | "ScaleAndPad" | "Original">("imageResizeMode", "NoScale");
@@ -47,6 +48,7 @@ export const useOptionsStore = defineStore("options", () => {
         keepImageGenOnDisconnect,
         fetchGenerationProgress,
         autoCarousel,
+        expandPromptMatrix,
         useBeta,
         imageDownloadType,
         imageResizeMode,
