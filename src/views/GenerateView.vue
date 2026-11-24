@@ -554,7 +554,7 @@ handleUrlParams();
                 </el-collapse>
             </div>
             <div class="main">
-                <el-button @click="() => {store.cancelled=true;store.generating=false;store.resetStore();}" class="reset-btn">Reset</el-button>
+                <el-button @click="store.resetStore()" class="reset-btn">Reset</el-button>
                 <el-button
                     type="primary"
                     class="generate-cancel-btn"

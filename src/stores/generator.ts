@@ -458,6 +458,20 @@ export const useGeneratorStore = defineStore("generator", () => {
      * Resets the generator store to its default state
      * */
     function resetStore()  {
+        // Reset is a discard operation, unlike Cancel (which keeps and shows any
+        // outputs collected so far). Retire the active worker before clearing
+        // shared state so it cannot repopulate the carousel after the reset.
+        ++epochCounter;
+        const currentController = abortController.value;
+        currentController?.abort();
+        cancelled.value = true;
+        generating.value = false;
+        if (abortController.value === currentController) abortController.value = null;
+        stopProgressPolling();
+        clearInterval(timer.value.interval);
+        timer.value.interval = 0;
+        timer.value.seconds = 0;
+
         params.value = getDefaultStore();
         extraRequestFields.value = "";
         inpainting.value = getDefaultImageProps();
@@ -902,6 +916,10 @@ export const useGeneratorStore = defineStore("generator", () => {
      * */
     async function processImages(finalImages: any[], finalizeRecovery = false, epoch: number) {
         const store = useOutputStore();
+
+        // A reset or newer generation may have retired this call before it
+        // reached processImages. Do not persist or expose those stale results.
+        if (epoch < epochCounter) return [];
 
         console.log(finalImages)
         const finalParams: ImageData[] = await Promise.all(
